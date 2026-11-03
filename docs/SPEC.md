@@ -53,10 +53,13 @@ Keep the Win32 code behind a small `platform` module so the UI layer never touch
 
 ## Milestones
 
-1. **Spike** — prove the risky Windows parts with a minimal UI (see below).
+The visual reference for the popup and menu is `docs/mockup.html`.
+
+1. **Spike** — prove the risky Windows parts with a minimal UI (see below). Done.
 2. **Real app** — SQLite history, images and file lists, tray icon, pinning, filter chips,
-   right-click menu, settings for hotkey and history size.
-3. **Polish** — Ditto import, paste-as transforms, collections, sensitive-text masking.
+   the mockup's popup and right-click menu (with paste-as transforms), a config file for
+   hotkey and history size.
+3. **Polish** — Ditto import, collections, sensitive-text masking, settings UI, autostart.
 
 ### Spike acceptance
 

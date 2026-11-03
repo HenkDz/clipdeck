@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipdeck mockup</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+:root{--bg:#f4f3ee;--surface:#fff;--text:#1f1e1d;--muted:#8a8984;--secondary:#5f5e5a;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--selected:rgba(0,0,0,.07);--link-bg:#e6f1fb;--link-fg:#185fa5;--mail-bg:#eeedfe;--mail-fg:#534ab7;--warn-bg:#faeeda;--warn-fg:#854f0b;--danger:#a32d2d;--chip:#1f1e1d;--on-chip:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#1a1a19;--surface:#262624;--text:#eceae4;--muted:#8a8984;--secondary:#b4b2a9;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.18);--selected:rgba(255,255,255,.1);--link-bg:#0c447c;--link-fg:#b5d4f4;--mail-bg:#3c3489;--mail-fg:#cecbf6;--warn-bg:#633806;--warn-fg:#fac775;--danger:#f09595;--chip:#eceae4;--on-chip:#1f1e1d}}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 16px;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+.wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:640px){.wrap{grid-template-columns:1fr}}
+.pop{background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:13px;border-top:1px solid var(--border)}
+.ico{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px}
+.title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{font-size:11px;color:var(--muted)}
+.section{font-size:11px;color:var(--muted);padding:6px 12px;border-top:1px solid var(--border)}
+.key{font-family:Consolas,monospace;font-size:11px;color:var(--muted);border:1px solid var(--border-strong);border-radius:4px;padding:0 5px}
+.chip{border:1px solid var(--border-strong);padding:3px 9px;border-radius:999px;color:var(--secondary)}
+.chip.on{background:var(--chip);color:var(--on-chip);border-color:var(--chip)}
+.mi{display:flex;align-items:center;gap:10px;padding:7px 12px;font-size:13px}
+.mi i{font-size:16px;color:var(--secondary)}
+.sep{border-top:1px solid var(--border);margin:4px 0}
+.cap{font-size:12px;color:var(--muted);margin-top:8px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div>
+<div class="pop">
+<div style="padding:10px 12px;display:flex;align-items:center;gap:8px">
+<i class="ti ti-search" style="font-size:16px;color:var(--muted)"></i>
+<span style="font-size:13px;color:var(--muted)">Search your clipboard</span>
+</div>
+<div style="display:flex;gap:6px;padding:0 12px 10px;font-size:11px;flex-wrap:wrap">
+<span class="chip on">All</span><span class="chip">Links</span><span class="chip">Images</span><span class="chip">Text</span><span class="chip"><i class="ti ti-pin" style="font-size:11px"></i> Pinned</span>
+</div>
+<div class="section">Pinned</div>
+<div class="row" style="border-top:none">
+<div class="ico" style="background:var(--mail-bg);color:var(--mail-fg)"><i class="ti ti-mail"></i></div>
+<div style="flex:1;min-width:0"><div class="title">Hi Joanna, I'm Jason with Elite…</div><div class="meta">Outreach template</div></div>
+<i class="ti ti-pin" style="color:var(--secondary)"></i>
+</div>
+<div class="section">Today</div>
+<div class="row" style="border-top:none;background:var(--selected)">
+<div class="ico" style="background:var(--link-bg);color:var(--link-fg)"><i class="ti ti-link"></i></div>
+<div style="flex:1;min-width:0"><div class="title">github.com/HenkDz/coder-link</div><div class="meta">Chrome · 2 min ago</div></div>
+<div style="display:flex;gap:8px;color:var(--secondary);font-size:15px">
+<i class="ti ti-clipboard-text" title="Paste as plain text"></i><i class="ti ti-pin" title="Pin"></i><i class="ti ti-trash" title="Delete"></i>
+</div>
+</div>
+<div class="row">
+<div style="width:56px;height:34px;border-radius:6px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-photo" style="color:var(--muted)"></i></div>
+<div style="flex:1;min-width:0"><div>Screenshot</div><div class="meta">1280×720 · Snipping Tool · 9 min ago</div></div>
+</div>
+<div class="row">
+<div class="ico" style="background:var(--warn-bg);color:var(--warn-fg)"><i class="ti ti-lock"></i></div>
+<div style="flex:1;min-width:0"><div style="letter-spacing:2px;color:var(--secondary)">••••••••••••</div><div class="meta">Looks like a password · clears in 60 s</div></div>
+</div>
+<div class="row">
+<div class="ico" style="background:var(--link-bg);color:var(--link-fg)"><i class="ti ti-at"></i></div>
+<div style="flex:1;min-width:0"><div class="title">djadunandan@qchnyc.org</div><div class="meta">Email · 1 h ago</div></div>
+</div>
+<div style="display:flex;gap:14px;padding:8px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);flex-wrap:wrap">
+<span><span class="key">Enter</span> paste</span><span><span class="key">Shift Enter</span> plain text</span><span><span class="key">Ctrl P</span> pin</span><span><span class="key">Del</span> delete</span>
+</div>
+</div>
+<div class="cap">Popup: search first, actions on the selected row</div>
+</div>
+<div>
+<div class="pop" style="padding:4px 0">
+<div class="mi" style="background:var(--selected)"><i class="ti ti-clipboard"></i><span style="flex:1">Paste</span><span class="key">Enter</span></div>
+<div class="mi"><i class="ti ti-clipboard-text"></i><span style="flex:1">Paste as plain text</span><span class="key">⇧ Enter</span></div>
+<div class="mi"><i class="ti ti-wand"></i><span style="flex:1">Paste as…</span><i class="ti ti-chevron-right"></i></div>
+<div class="sep"></div>
+<div class="mi"><i class="ti ti-pin"></i><span style="flex:1">Pin</span><span class="key">Ctrl P</span></div>
+<div class="mi"><i class="ti ti-folder"></i><span style="flex:1">Add to collection</span><i class="ti ti-chevron-right"></i></div>
+<div class="mi"><i class="ti ti-edit"></i><span style="flex:1">Edit</span></div>
+<div class="sep"></div>
+<div class="mi" style="color:var(--danger)"><i class="ti ti-trash" style="color:var(--danger)"></i><span style="flex:1">Delete</span><span class="key">Del</span></div>
+<div class="sep"></div>
+<div class="mi" style="color:var(--secondary)"><i class="ti ti-dots"></i><span style="flex:1">More</span><i class="ti ti-chevron-right"></i></div>
+</div>
+<div class="cap">Right-click: grouped by task</div>
+<div class="pop" style="padding:10px 12px;margin-top:14px">
+<div class="meta" style="margin-bottom:6px">Paste as… (text clip)</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12px">
+<span class="chip">UPPERCASE</span><span class="chip">lowercase</span><span class="chip">Trim spaces</span><span class="chip">One line</span>
+</div>
+<div class="meta" style="margin-top:8px">Options depend on the clip's type: an image gets "Save as file", a link gets "Open".</div>
+</div>
+</div>
+</div>
+</body>
+</html>
