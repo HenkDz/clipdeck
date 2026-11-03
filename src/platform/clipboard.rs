@@ -1,5 +1,14 @@
 use super::Event;
-use std::{cell::RefCell, sync::mpsc, thread, time::Duration};
+use std::{
+    cell::RefCell,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
+    time::Duration,
+};
 use windows::{
     Win32::{
         Foundation::*,
@@ -11,6 +20,7 @@ use windows::{
 
 const TEXT: u32 = 13;
 thread_local! { static SENDER: RefCell<Option<async_channel::Sender<Event>>> = const { RefCell::new(None) }; }
+thread_local! { static PAUSED: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) }; }
 
 #[derive(Clone, Copy)]
 pub struct Clipboard(usize);
@@ -37,7 +47,7 @@ fn open(owner: HWND) -> Result<Open> {
     Ok(Open)
 }
 
-fn format(name: &str) -> Result<u32> {
+pub(super) fn format(name: &str) -> Result<u32> {
     let id = unsafe { RegisterClipboardFormatW(PCWSTR(HSTRING::from(name).as_ptr())) };
     if id == 0 {
         Err(windows::core::Error::from_win32())
@@ -50,11 +60,17 @@ fn marker() -> String {
     format!("Clipdeck.OwnWrite.{}", std::process::id())
 }
 
-unsafe fn bytes(id: u32) -> Result<Vec<u8>> {
+pub(super) unsafe fn bytes(id: u32) -> Result<Vec<u8>> {
     unsafe {
         let handle = GetClipboardData(id)?;
         let global = HGLOBAL(handle.0);
         let size = GlobalSize(global);
+        if size > 128 * 1024 * 1024 {
+            return Err(windows::core::Error::new(
+                windows::core::HRESULT(0x80070057u32 as i32),
+                "Clipboard format exceeds 128 MiB",
+            ));
+        }
         let ptr = GlobalLock(global);
         if ptr.is_null() {
             return Err(windows::core::Error::from_win32());
@@ -84,22 +100,11 @@ fn read(owner: HWND) -> Result<Option<Event>> {
                 return Ok(None);
             }
         }
-        if IsClipboardFormatAvailable(TEXT).is_err() {
+        let own_write = IsClipboardFormatAvailable(format(&marker())?).is_ok();
+        if own_write {
             return Ok(None);
         }
-        let own_write = IsClipboardFormatAvailable(format(&marker())?).is_ok();
-        let data = bytes(TEXT)?;
-        let wide: Vec<u16> = data
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|b| u16::from_le_bytes(*b))
-            .take_while(|c| *c != 0)
-            .collect();
-        Ok(Some(Event::Clip {
-            text: String::from_utf16_lossy(&wide),
-            own_write,
-        }))
+        super::capture::read().map(|clip| clip.map(|clip| Event::Clip { clip, own_write }))
     }
 }
 
@@ -136,10 +141,38 @@ impl Clipboard {
             put(TEXT, &wide)
         }
     }
+    pub fn write_clip(self, clip: &crate::clip::Clip, plain: bool) -> Result<()> {
+        if plain || clip.formats.is_empty() {
+            return self.write(&clip.text);
+        }
+        let _guard = open(HWND(self.0 as *mut _))?;
+        unsafe {
+            EmptyClipboard()?;
+            put(format(&marker())?, &1u32.to_le_bytes())?;
+            for f in &clip.formats {
+                let id = match f.name.as_str() {
+                    "CF_UNICODETEXT" => 13,
+                    "CF_DIB" => 8,
+                    "CF_DIBV5" => 17,
+                    "CF_HDROP" => 15,
+                    name => format(name)?,
+                };
+                put(id, &f.data)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if msg == WM_CLIPBOARDUPDATE {
+        if PAUSED.with(|p| {
+            p.borrow()
+                .as_ref()
+                .is_some_and(|p| p.load(Ordering::SeqCst))
+        }) {
+            return LRESULT(0);
+        }
         let event = match read(hwnd) {
             Ok(event) => event,
             Err(e) => Some(Event::Error(format!("Clipboard read: {e}"))),
@@ -156,10 +189,14 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
     unsafe { DefWindowProcW(hwnd, msg, wp, lp) }
 }
 
-pub fn start_watcher(sender: async_channel::Sender<Event>) -> Result<Clipboard> {
+pub fn start_watcher(
+    sender: async_channel::Sender<Event>,
+    paused: Arc<AtomicBool>,
+) -> Result<Clipboard> {
     let (ready, result) = mpsc::sync_channel(1);
     thread::spawn(move || unsafe {
-        SENDER.with(|s| *s.borrow_mut() = Some(sender));
+        SENDER.with(|s| *s.borrow_mut() = Some(sender.clone()));
+        PAUSED.with(|s| *s.borrow_mut() = Some(paused.clone()));
         let setup = || -> Result<HWND> {
             let instance = GetModuleHandleW(None)?;
             let class = WNDCLASSW {
@@ -190,6 +227,13 @@ pub fn start_watcher(sender: async_channel::Sender<Event>) -> Result<Clipboard> 
         };
         match setup() {
             Ok(hwnd) => {
+                let _tray = match super::tray::create(sender.clone(), paused) {
+                    Ok(tray) => Some(tray),
+                    Err(e) => {
+                        let _ = sender.send_blocking(Event::Error(format!("Tray: {e}")));
+                        None
+                    }
+                };
                 let _ = ready.send(Ok(Clipboard(hwnd.0 as usize)));
                 let mut msg = MSG::default();
                 while GetMessageW(&mut msg, None, 0, 0).as_bool() {
@@ -210,68 +254,5 @@ pub fn start_watcher(sender: async_channel::Sender<Event>) -> Result<Clipboard> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore = "writes the real Windows clipboard; run with the app stopped"]
-    fn live_listener_privacy_formats_and_own_marker() {
-        let (sender, receiver) = async_channel::unbounded();
-        let clipboard = start_watcher(sender).unwrap();
-        let owner = HWND(clipboard.0 as *mut _);
-        let cases = [
-            (None, None, true),
-            (
-                Some("ExcludeClipboardContentFromMonitorProcessing"),
-                Some(1u32),
-                false,
-            ),
-            (Some("Clipboard Viewer Ignore"), Some(1u32), false),
-            (Some("CanIncludeInClipboardHistory"), Some(0u32), false),
-            (Some("CanIncludeInClipboardHistory"), Some(1u32), true),
-        ];
-        for (name, flag, recorded) in cases {
-            while receiver.try_recv().is_ok() {}
-            {
-                let _guard = open(owner).unwrap();
-                unsafe {
-                    EmptyClipboard().unwrap();
-                    if let Some(name) = name {
-                        put(format(name).unwrap(), &flag.unwrap().to_le_bytes()).unwrap();
-                    }
-                    let text: Vec<u8> = "Clipdeck privacy fixture"
-                        .encode_utf16()
-                        .chain(Some(0))
-                        .flat_map(u16::to_le_bytes)
-                        .collect();
-                    put(TEXT, &text).unwrap();
-                }
-            }
-            thread::sleep(Duration::from_millis(250));
-            let event = receiver.try_recv();
-            if recorded {
-                assert!(
-                    matches!(
-                        event,
-                        Ok(Event::Clip {
-                            own_write: false,
-                            ..
-                        })
-                    ),
-                    "{name:?}"
-                );
-            } else {
-                assert!(event.is_err(), "excluded format {name:?} emitted an event");
-            }
-        }
-        clipboard.write("Clipdeck own write fixture").unwrap();
-        thread::sleep(Duration::from_millis(250));
-        assert!(matches!(
-            receiver.try_recv(),
-            Ok(Event::Clip {
-                own_write: true,
-                ..
-            })
-        ));
-    }
-}
+#[path = "clipboard_tests.rs"]
+mod tests;

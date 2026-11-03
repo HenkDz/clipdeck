@@ -1,0 +1,32 @@
+use windows::Win32::{
+    Foundation::*,
+    System::{SystemInformation::GetLocalTime, Time::*},
+};
+pub fn is_today(timestamp: i64) -> bool {
+    let ticks = (timestamp.max(0) as u64)
+        .saturating_add(11_644_473_600)
+        .saturating_mul(10_000_000);
+    let file = FILETIME {
+        dwLowDateTime: ticks as u32,
+        dwHighDateTime: (ticks >> 32) as u32,
+    };
+    let mut utc = SYSTEMTIME::default();
+    let mut local = SYSTEMTIME::default();
+    unsafe {
+        if FileTimeToSystemTime(&file, &mut utc).is_err()
+            || SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).is_err()
+        {
+            return false;
+        }
+        let now = GetLocalTime();
+        (now.wYear, now.wMonth, now.wDay) == (local.wYear, local.wMonth, local.wDay)
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn local_calendar() {
+        assert!(super::is_today(crate::clip::now()));
+        assert!(!super::is_today(crate::clip::now() - 172800));
+    }
+}

@@ -12,6 +12,13 @@ use windows::{
 pub struct Target(usize);
 
 impl Target {
+    pub fn is_app(self) -> bool {
+        let mut pid = 0;
+        unsafe {
+            GetWindowThreadProcessId(HWND(self.0 as *mut _), Some(&mut pid));
+        }
+        pid == std::process::id()
+    }
     pub fn capture() -> Self {
         Self(unsafe { GetForegroundWindow() }.0 as usize)
     }
@@ -85,14 +92,6 @@ impl Target {
     }
 }
 
-pub fn cursor() -> (f32, f32) {
-    let mut point = POINT::default();
-    unsafe {
-        let _ = GetCursorPos(&mut point);
-    }
-    (point.x as f32, point.y as f32)
-}
-
 // Raw native handles are obtained and consumed only at this platform boundary.
 pub fn configure_popup(window: &gpui::Window) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -101,15 +100,45 @@ pub fn configure_popup(window: &gpui::Window) {
     {
         unsafe {
             let hwnd = HWND(handle.hwnd.get() as *mut _);
-            let (x, y) = cursor();
+            use windows::Win32::{Graphics::Gdi::*, UI::HiDpi::*};
+            let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            SetWindowLongPtrW(
+                hwnd,
+                GWL_EXSTYLE,
+                (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize),
+            );
+            let mut cursor = POINT::default();
+            let _ = GetCursorPos(&mut cursor);
+            let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+                return;
+            }
+            let mut dx = 96;
+            let mut dy = 96;
+            let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
+            let r = info.rcWork;
+            let placement = super::placement::clamp(
+                (cursor.x, cursor.y),
+                (480 * dx as i32 / 96, 480 * dy as i32 / 96),
+                super::placement::Rect {
+                    left: r.left,
+                    top: r.top,
+                    right: r.right,
+                    bottom: r.bottom,
+                },
+            );
             let _ = SetWindowPos(
                 hwnd,
                 Some(HWND_TOPMOST),
-                x as i32,
-                y as i32,
-                0,
-                0,
-                SWP_NOSIZE | SWP_SHOWWINDOW,
+                placement.left,
+                placement.top,
+                placement.right - placement.left,
+                placement.bottom - placement.top,
+                SWP_SHOWWINDOW | SWP_FRAMECHANGED,
             );
         }
     }
