@@ -27,6 +27,9 @@ fn glyph(cmd: Command) -> IconName {
         Command::Details => IconName::Info,
         Command::Save => IconName::Download,
         Command::PasteImages => IconName::Images,
+        Command::CopyFile(_) => IconName::Copy,
+        Command::FileText(_, false) => IconName::TextAlignStart,
+        Command::FileText(_, true) => IconName::Type,
         Command::Transform(t) => match t {
             "UPPERCASE" => IconName::CaseUpper,
             "lowercase" => IconName::CaseLower,
@@ -334,4 +337,77 @@ pub(super) fn header(
                 }
             },
         ))
+}
+
+/// The menu for one file in the gallery or its large preview.
+pub(super) fn file(
+    menu: PopupMenu,
+    view: WeakEntity<Popup>,
+    id: i64,
+    ix: usize,
+    path: String,
+    missing: bool,
+    in_grid: bool,
+) -> PopupMenu {
+    let present = !missing;
+    let run = |cmd: Command, label: &'static str, key: Option<&'static str>, enabled: bool| {
+        let view = view.clone();
+        let tone = if enabled {
+            Tone::Normal
+        } else {
+            Tone::Disabled
+        };
+        entry(label, glyph(cmd), key, tone, move |window, cx| {
+            let _ = view.update(cx, |this, cx| this.command(id, cmd, window, cx));
+        })
+    };
+    let open = |label: &'static str, icon: IconName, reveal: bool| {
+        let (view, path) = (view.clone(), path.clone());
+        let tone = if present {
+            Tone::Normal
+        } else {
+            Tone::Disabled
+        };
+        entry(label, icon, None, tone, move |_, cx| {
+            let path = path.clone();
+            let _ = view.update(cx, |this, cx| this.open_file(path, reveal, cx));
+        })
+    };
+    let mut menu = menu
+        .min_w(px(232.))
+        .max_w(px(280.))
+        .item(run(
+            Command::PasteFile(ix),
+            "Paste this file",
+            Some("Enter"),
+            present,
+        ))
+        .item(run(Command::CopyFile(ix), "Copy this file", None, present))
+        .item(run(
+            Command::FileText(ix, false),
+            "Paste path as text",
+            None,
+            true,
+        ))
+        .item(run(
+            Command::FileText(ix, true),
+            "Paste file name",
+            None,
+            true,
+        ))
+        .separator();
+    if in_grid {
+        let view = view.clone();
+        menu = menu.item(entry(
+            "Preview",
+            IconName::Eye,
+            Some("Space"),
+            Tone::Normal,
+            move |_, cx| {
+                let _ = view.update(cx, |this, cx| this.open_gallery_file(ix, cx));
+            },
+        ));
+    }
+    menu.item(open("Open in default app", IconName::ExternalLink, false))
+        .item(open("Show in folder", IconName::FolderOpen, true))
 }

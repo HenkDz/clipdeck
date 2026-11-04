@@ -1,5 +1,29 @@
 # Clipdeck milestone 2
 
+## Per-file context menu in the file preview (2026-11-04)
+
+Right-clicking a file in the gallery, or the large single-file preview,
+selects it and opens a menu for that file only: Paste this file (Enter),
+Copy this file, Paste path as text, Paste file name, then Preview (grid
+only), Open in default app and Show in folder. Missing files keep only
+the two text entries enabled. Pastes count on the clip as before (file
+subsets as normal pastes, path/name as plain text); Copy leaves the popup
+open. Opening and Explorer selection run off the UI thread; failures show
+in the status line. Focus returns to the gallery when the menu closes, so
+arrows, Space and Enter keep working.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Paste one file from its menu | PASS | Explorer folder holding only `placeholder.txt`; gallery of the 9-file clip, right-click photo.jpg, Paste this file: the folder then held `photo.jpg` and `placeholder.txt` only. |
+| Paste file name | PASS | Right-click ditto.png, Paste file name into a Tk text box: its text was exactly `ditto.png`. |
+| Copy this file | PASS | Right-click the `assets` folder tile, Copy this file: the clipboard's CF_HDROP listed only `...\assets`; the popup stayed open and → / Space still worked. |
+| Menu on the large preview | PASS | `after-file-menu-dark.png`; grid menu in `after-gallery-menu-dark.png` / `-light.png`. |
+
+An Explorer quirk seen while testing: after the popup closes, an Explorer
+window showing an **empty** folder ignores Ctrl+V entirely, including one
+typed directly to it, because focus does not return to its empty file view.
+With any item in the folder, pastes land normally.
+
 ## Design pass and second UX round (2026-11-04)
 
 Local branch `Nour/m2-polish` on top of `Nour/m2-ux`; no push. Rust 1.99.1,

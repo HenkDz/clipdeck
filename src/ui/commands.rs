@@ -28,6 +28,10 @@ pub(super) enum Command {
     PasteFile(usize),
     /// Only the image files of a mixed file clip.
     PasteImages,
+    /// One file of a file clip onto the clipboard, without pasting.
+    CopyFile(usize),
+    /// One file's full path (false) or name (true), pasted as plain text.
+    FileText(usize, bool),
 }
 
 pub(super) const TEXT_TRANSFORMS: [&str; 4] = ["UPPERCASE", "lowercase", "Trim spaces", "One line"];
@@ -219,11 +223,16 @@ impl Popup {
                 | Command::Transform(_)
                 | Command::Copy
                 | Command::PasteFile(_)
-                | Command::PasteImages => {
-                    let plain = matches!(cmd, Command::Paste(true) | Command::Transform(_));
-                    let file_transform =
-                        matches!(cmd, Command::Transform(t) if FILE_TRANSFORMS.contains(&t));
-                    if plain && !clip.is_text() && !(file_transform && clip.kind == "files") {
+                | Command::PasteImages
+                | Command::CopyFile(_)
+                | Command::FileText(..) => {
+                    let plain = matches!(
+                        cmd,
+                        Command::Paste(true) | Command::Transform(_) | Command::FileText(..)
+                    );
+                    let file_text = matches!(cmd, Command::FileText(..))
+                        || matches!(cmd, Command::Transform(t) if FILE_TRANSFORMS.contains(&t));
+                    if plain && !clip.is_text() && !(file_text && clip.kind == "files") {
                         return Ok(());
                     }
                     self.store
@@ -232,7 +241,7 @@ impl Popup {
                         .map_err(|e| e.to_string())?;
                     let paths: Vec<String> = clip.text.lines().map(str::to_owned).collect();
                     let subset = match cmd {
-                        Command::PasteFile(ix) if clip.kind == "files" => {
+                        Command::PasteFile(ix) | Command::CopyFile(ix) if clip.kind == "files" => {
                             Some(paths.get(ix).cloned().into_iter().collect::<Vec<_>>())
                         }
                         Command::PasteImages if clip.kind == "files" => Some(
@@ -243,7 +252,9 @@ impl Popup {
                                 .map(|(p, _)| p.clone())
                                 .collect(),
                         ),
-                        Command::PasteFile(_) | Command::PasteImages => return Ok(()),
+                        Command::PasteFile(_) | Command::PasteImages | Command::CopyFile(_) => {
+                            return Ok(());
+                        }
                         _ => None,
                     };
                     if subset.as_ref().is_some_and(|s| s.is_empty()) {
@@ -251,6 +262,12 @@ impl Popup {
                     }
                     if let Command::Transform(transform) = cmd {
                         clip.text = transform_text(&clip.text, transform);
+                    }
+                    if let Command::FileText(ix, name) = cmd {
+                        let Some(path) = paths.get(ix) else {
+                            return Ok(());
+                        };
+                        clip.text = if name { files::name(path) } else { path }.to_owned();
                     }
                     let clipboard = self.clipboard;
                     // Kept open, the popup stays put and pastes into the last real app.
@@ -262,7 +279,7 @@ impl Popup {
                     };
                     let mouse = self.mode.is_mouse() && !keep;
                     let delay = self.config.paste_delay_ms;
-                    let copy = cmd == Command::Copy;
+                    let copy = matches!(cmd, Command::Copy | Command::CopyFile(_));
                     if !copy && !keep {
                         platform::hide_popup(window);
                     }
@@ -375,6 +392,33 @@ impl Popup {
             }
         })
         .detach();
+    }
+    /// Opens one file in its default app, or selects it in Explorer, off the UI thread.
+    pub(super) fn open_file(&mut self, path: String, reveal: bool, cx: &mut Context<Self>) {
+        let task = cx.background_spawn(async move {
+            if reveal {
+                platform::preview::reveal(&[std::path::PathBuf::from(&path)])
+            } else {
+                platform::open_external(&path)
+            }
+        });
+        cx.spawn(async move |this, cx| {
+            if let Err(error) = task.await {
+                let _ = this.update(cx, |this, cx| {
+                    this.status = Some(Status::Error(error));
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+    pub(super) fn open_gallery_file(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if let View::Gallery(g) = &mut self.view {
+            g.selected = ix;
+            g.open = true;
+        }
+        self.load_gallery_detail(ix, cx);
+        cx.notify();
     }
     /// Size, dimensions and a large Shell image for the gallery's opened file.
     pub(super) fn load_gallery_detail(&mut self, ix: usize, cx: &mut Context<Self>) {

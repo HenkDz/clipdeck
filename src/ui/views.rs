@@ -8,7 +8,7 @@ use super::{
 };
 use crate::files::{self, Kind};
 use gpui::{prelude::FluentBuilder, *};
-use gpui_component::input::Textarea;
+use gpui_component::{input::Textarea, menu::PopupMenu};
 use gpui_kit_assets::IconName;
 use std::path::PathBuf;
 
@@ -46,6 +46,29 @@ fn well(p: Palette) -> Div {
 }
 
 impl Popup {
+    /// Right-click menu for one file of the gallery; selects that file first.
+    fn file_menu(
+        &mut self,
+        ix: usize,
+        position: Point<Pixels>,
+        in_grid: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let View::Gallery(g) = &mut self.view else {
+            return;
+        };
+        let Some(file) = g.files.get(ix) else {
+            return;
+        };
+        g.selected = ix;
+        let (id, path, missing) = (g.id, file.path.clone(), file.missing == Some(true));
+        let view = cx.entity().downgrade();
+        let menu = PopupMenu::build(window, cx, move |menu, _, _| {
+            super::menu::file(menu, view.clone(), id, ix, path.clone(), missing, in_grid)
+        });
+        self.open_menu(menu, position, Anchor::TopLeft, window, cx);
+    }
     fn bar(
         &self,
         title: SharedString,
@@ -409,6 +432,13 @@ impl Popup {
                     }
                     cx.notify();
                 }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                        cx.stop_propagation();
+                        this.file_menu(ix, event.position, true, window, cx);
+                    }),
+                )
         });
         let tiles: Vec<_> = tiles.collect();
         div()
@@ -527,7 +557,18 @@ impl Popup {
                     .flex()
                     .flex_col()
                     .gap(S2)
-                    .child(well(p).child(content))
+                    .child(
+                        well(p)
+                            .id("file-well")
+                            .on_mouse_down(
+                                MouseButton::Right,
+                                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                                    cx.stop_propagation();
+                                    this.file_menu(ix, event.position, false, window, cx);
+                                }),
+                            )
+                            .child(content),
+                    )
                     .child(
                         div()
                             .flex()

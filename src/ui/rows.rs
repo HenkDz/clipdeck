@@ -418,6 +418,9 @@ impl Popup {
             this.menu = None;
             if matches!(this.view, super::popup::View::List) {
                 this.input.update(cx, |s, cx| s.focus(window, cx));
+            } else {
+                // Gallery keys need focus back on the popup after the menu closes.
+                this.focus.focus(window, cx);
             }
             cx.notify();
         })
