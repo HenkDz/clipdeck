@@ -112,11 +112,29 @@ a selected row for the bulk actions. Search, filter changes and reopening start 
 
 ## Getting started
 
-There are no prebuilt releases yet; build from source.
+### Download
 
-**Requirements:** Windows 10 or 11, [Rust](https://rustup.rs) with the MSVC toolchain
-(Visual Studio Build Tools with "Desktop development with C++"). The repository pins Rust 1.99.1
-in `rust-toolchain.toml`; rustup installs it on the first build.
+Get `clipdeck-0.1.0-windows-x64.zip` from the
+[latest release](https://github.com/HenkDz/clipdeck/releases/latest), unzip it anywhere and run
+`clipdeck.exe`. There is no installer; your history and settings live in `%APPDATA%\Clipdeck`.
+
+- Windows 10 or 11, 64-bit. It uses the Microsoft Visual C++ runtime, which most PCs already
+  have; if Windows reports `VCRUNTIME140.dll` missing, install the
+  [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+- The exe is not code-signed yet, so SmartScreen may warn on first launch: choose
+  **More info → Run anyway**.
+
+Clipdeck runs in the background with a tray icon:
+
+- **Left-click** the tray icon to open the popup (click again to close it).
+- **Right-click** for Open, Pause recording, Settings and Quit.
+- Starting it a second time just opens the running copy.
+
+### Build from source
+
+**Requirements:** [Rust](https://rustup.rs) with the MSVC toolchain (Visual Studio Build Tools
+with "Desktop development with C++"). The repository pins Rust 1.99.1 in `rust-toolchain.toml`;
+rustup installs it on the first build.
 
 ```powershell
 git clone https://github.com/HenkDz/clipdeck.git
@@ -125,12 +143,7 @@ cargo build --release
 .\target\release\clipdeck.exe
 ```
 
-The first build compiles GPUI and takes a few minutes. Clipdeck then runs in the background with
-a tray icon:
-
-- **Left-click** the tray icon to open the popup (click again to close it).
-- **Right-click** for Open, Pause recording, Settings and Quit.
-- Starting it a second time just opens the running copy.
+The first build compiles GPUI and takes a few minutes.
 
 ## Privacy and data
 
