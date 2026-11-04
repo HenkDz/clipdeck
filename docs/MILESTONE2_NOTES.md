@@ -336,3 +336,43 @@ No GUI actions were attempted after the physical Escape interruption.
 The final release remains running from
 `C:/Users/nooro/orca/workspaces/clipdeck/m2-ux/target/release/clipdeck.exe`
 for owner testing.
+
+## Copy selection and pasted indicators (2026-11-04)
+
+Ctrl+C in the list/search view now copies the selected clip in its original
+format to the system clipboard while keeping the popup open. It uses the
+existing Copy command, moves the current-clipboard dot, and does not increment
+copy or paste counts. The shortcut is shown in the footer and More / Copy to
+clipboard. Ctrl+V retains its normal input behavior. Editor copy/paste remains
+standard.
+
+Schema v4 adds a persistent paste count with zero for existing clips.
+After Clipdeck successfully writes the clipboard and sends the paste chord
+to the verified target, the main store writer increments that clip's count.
+Rows display a separate green `✓ pasted N×` badge. Copy counts and the blue
+re-copy bar remain independent. Re-copying preserves the paste count and does
+not reorder history as a side effect of marking a paste. Changed text edits
+reset the pasted status; saving unchanged text preserves it. Delayed paste
+completions match the original content hash, so editing/deleting/reusing an ID
+cannot mark different content.
+
+The badge counts paste chords **sent through Clipdeck**, including Enter,
+double-click, inline Paste, plain text and transform actions. It does not
+observe Ctrl+V/context-menu pastes made directly inside other applications,
+and SendInput success cannot certify that a target accepted a particular format.
+
+`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+`cargo test` (**28 passed, 2 ignored**) and the release build pass. New tests
+cover v3-to-v4 migration, persistent separate copy/paste counts, unchanged and
+changed edits, and stale completions after ID reuse. Existing opt-in clipboard
+and ShareX tests were not rerun for this change.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Ctrl+C selected clip | PASS | Filtered to the dedicated recopy fixture and invoked Ctrl+C. Read the full `Clipdeck recopy indicator fixture` from Windows Unicode clipboard; the search contained only `recopy indicator fixture`. Popup remained open; stored counters remained copies=2, pastes=0. |
+| Paste count after actual paste | PASS | Opened Clipdeck for the dedicated `paste-counter-target.txt` Notepad window and pressed Enter on the fixture. Notepad's accessibility text contains the fixture followed by its original target text; independent SQLite read reports pastes=1, copies=2. |
+| Pasted row badge | PASS | Reopened and filtered the actual release popup: green `✓ pasted 1×`, blue re-copy bar, `copied 2×`, clipboard dot and Ctrl+C footer are visible in `screenshots/v4-pasted-indicator.png`. |
+
+A consistent pre-migration backup is in the ignored
+`target/history-before-v4.db`. Final release remains running from this
+worktree's `target/release/clipdeck.exe`. Changes are local only.
