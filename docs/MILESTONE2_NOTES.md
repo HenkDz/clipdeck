@@ -1,5 +1,28 @@
 # Clipdeck milestone 2
 
+## ShareX copies failing while Clipdeck runs (2026-11-04)
+
+Owner report: annotated ShareX screenshots reached neither Clipdeck nor
+Ditto, and could not be pasted. Cause: Clipdeck read the clipboard as soon
+as it changed and kept it open while decoding the image and building the
+thumbnail. .NET's `Clipboard.SetDataObject(data, copy: true, …)`, which
+ShareX uses, publishes the data and then reopens the clipboard to render
+it; with Clipdeck still holding it, the retries ran out and the copy failed,
+so nothing was left on the clipboard for anyone.
+
+Fix: clipboard reads wait until updates have been quiet for 150 ms (bursts
+become one read), and while the clipboard is open only bytes are copied;
+PNG/DIB decoding and the thumbnail run afterwards on the worker thread.
+
+| Check | Before | After | How |
+| --- | --- | --- | --- |
+| ShareX-style copy of a 3440×1392 detailed PNG | FAIL 3/3 ("Requested Clipboard operation did not succeed", ~550 ms) | PASS 5/5 (~68 ms) | PowerShell STA script: `DataObject` with Bitmap + PNG stream, `SetDataObject($do, $true, 5, 100)`, against the fixture profile. With Clipdeck stopped the same script passed 3/3. |
+| Image still recorded | n/a | PASS | Stored as a 3440×1392 image clip; one copy raised `copies` by exactly one. |
+| Text capture, privacy formats, own writes | PASS | PASS | Plain text recorded; opt-in live clipboard test rerun and passed. |
+
+The ShareX image editor itself was not driven; the script uses the same
+.NET clipboard call with a ShareX-like data object.
+
 ## Per-file context menu in the file preview (2026-11-04)
 
 Right-clicking a file in the gallery, or the large single-file preview,

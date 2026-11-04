@@ -129,13 +129,23 @@ fn read(owner: HWND) -> Result<Option<Event>> {
         if own_write {
             return Ok(None);
         }
-        let clip = super::capture::read()?;
+        let captured = super::capture::read()?;
         drop(_guard);
-        if let Some(mut clip) = clip {
+        if let Some((mut clip, raw)) = captured {
             clip.sequence = GetClipboardSequenceNumber();
             let sender = SENDER.with(|s| s.borrow().clone());
-            // Shell extensions may block; never hold the clipboard or its message loop.
+            // Image decoding and Shell extensions are slow; never hold the clipboard or
+            // its message loop while they run.
             thread::spawn(move || {
+                if let Some(raw) = raw
+                    && let Err(error) = super::capture::finish(&mut clip, raw)
+                {
+                    if let Some(sender) = &sender {
+                        let _ =
+                            sender.send_blocking(Event::Error(format!("Clipboard image: {error}")));
+                    }
+                    return;
+                }
                 if clip.kind == "files" {
                     super::preview::summarize_files(&mut clip);
                 }
@@ -239,8 +249,22 @@ impl Clipboard {
     }
 }
 
+const READ_TIMER: usize = 1;
+/// Writers such as .NET's `Clipboard.SetDataObject` (ShareX) publish their data and then
+/// reopen the clipboard to render it. Reading at once holds the clipboard while they
+/// retry, and their copy fails. Wait until updates have been quiet this long.
+const READ_DELAY_MS: u32 = 150;
+
 unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if msg == WM_CLIPBOARDUPDATE {
+        // Restarting the timer coalesces bursts of updates into one read.
+        unsafe { SetTimer(Some(hwnd), READ_TIMER, READ_DELAY_MS, None) };
+        return LRESULT(0);
+    }
+    if msg == WM_TIMER && wp.0 == READ_TIMER {
+        unsafe {
+            let _ = KillTimer(Some(hwnd), READ_TIMER);
+        }
         if PAUSED.with(|p| {
             p.borrow()
                 .as_ref()

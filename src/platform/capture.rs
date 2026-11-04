@@ -36,8 +36,17 @@ unsafe fn drop_files() -> std::result::Result<Option<Vec<String>>, ()> {
     }
 }
 
-pub fn read() -> Result<Option<Clip>> {
+/// Image bytes copied while the clipboard was open, still to be decoded by [`finish`].
+pub enum RawImage {
+    Png,
+    Dib,
+}
+
+/// Reads the clipboard's content. Call with the clipboard open; it only copies bytes,
+/// so the clipboard can be closed again quickly.
+pub fn read() -> Result<Option<(Clip, Option<RawImage>)>> {
     unsafe {
+        let mut raw = None;
         let mut clip = Clip::text(String::new(), super::source::name());
         let png_format = format("PNG")?;
         let has_image = [png_format, 17, 8]
@@ -62,26 +71,20 @@ pub fn read() -> Result<Option<Clip>> {
                 data: bytes(15)?,
             });
         } else if route == Route::Image {
-            let (png, thumbnail, dimensions) = if IsClipboardFormatAvailable(png_format).is_ok() {
-                let png = bytes(png_format)?;
-                let (thumbnail, dimensions) = super::image::png_metadata(&png).map_err(|e| {
-                    windows::core::Error::new(windows::core::HRESULT(0x80070057u32 as i32), e)
-                })?;
-                (png, thumbnail, dimensions)
+            // Only copy bytes here; decoding waits until the clipboard is closed.
+            raw = Some(if IsClipboardFormatAvailable(png_format).is_ok() {
+                clip.payload = bytes(png_format)?;
+                RawImage::Png
             } else {
                 let id = if IsClipboardFormatAvailable(17).is_ok() {
                     17
                 } else {
                     8
                 };
-                super::image::png_from_dib(&bytes(id)?).map_err(|e| {
-                    windows::core::Error::new(windows::core::HRESULT(0x80070057u32 as i32), e)
-                })?
-            };
+                clip.payload = bytes(id)?;
+                RawImage::Dib
+            });
             clip.kind = "image".into();
-            clip.payload = png;
-            clip.thumbnail = thumbnail;
-            clip.text = dimensions;
             if let Some(file) = files.as_ref().and_then(|f| f.first()) {
                 clip.file_path = file.clone();
             } else {
@@ -125,6 +128,22 @@ pub fn read() -> Result<Option<Clip>> {
             return Ok(None);
         }
         clip.source_exe = super::source::exe_name();
-        Ok((!clip.payload.is_empty()).then_some(clip))
+        Ok((!clip.payload.is_empty()).then_some((clip, raw)))
     }
+}
+
+/// Turns copied image bytes into the stored PNG, thumbnail and dimensions.
+/// Runs after the clipboard is closed, off the listener's message loop.
+pub fn finish(clip: &mut Clip, raw: RawImage) -> std::result::Result<(), String> {
+    let (png, thumbnail, dimensions) = match raw {
+        RawImage::Png => {
+            let (thumbnail, dimensions) = super::image::png_metadata(&clip.payload)?;
+            (std::mem::take(&mut clip.payload), thumbnail, dimensions)
+        }
+        RawImage::Dib => super::image::png_from_dib(&clip.payload)?,
+    };
+    clip.payload = png;
+    clip.thumbnail = thumbnail;
+    clip.text = dimensions;
+    Ok(())
 }
