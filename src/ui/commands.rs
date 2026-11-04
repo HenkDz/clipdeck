@@ -5,6 +5,7 @@ use gpui_component::input::TextareaState;
 #[derive(Clone, Copy)]
 pub(super) enum Command {
     Preview,
+    OpenLocation,
     Paste(bool),
     Pin,
     Delete,
@@ -38,10 +39,19 @@ impl Popup {
         };
         let result: Result<(), String> = (|| {
             match cmd {
-                Command::Preview => {
-                    self.preview = Some("Opening preview…".into());
+                Command::Preview | Command::OpenLocation => {
+                    let location = matches!(cmd, Command::OpenLocation);
+                    self.preview = Some(
+                        if location {
+                            "Opening file location…"
+                        } else {
+                            "Opening preview…"
+                        }
+                        .into(),
+                    );
                     self.preview_id = Some(id);
-                    let task = cx.background_spawn(async move { platform::preview::load(id) });
+                    let task =
+                        cx.background_spawn(async move { platform::preview::load(id, location) });
                     cx.spawn(async move |this, cx| {
                         let result = task.await;
                         let _ = this.update(cx, |this, cx| {

@@ -52,6 +52,15 @@ pub(super) fn build(
         .min_w(px(220.))
         .max_w(px(230.))
         .item(item("Preview", view.clone(), id, Command::Preview))
+        .item(
+            item(
+                "Open file location",
+                view.clone(),
+                id,
+                Command::OpenLocation,
+            )
+            .disabled(!matches!(clip.kind.as_str(), "image" | "files")),
+        )
         .separator()
         .item(item("Paste", view.clone(), id, Command::Paste(false)))
         .item(

@@ -1,4 +1,7 @@
-use std::{io::Cursor, path::Path};
+use std::{
+    io::Cursor,
+    path::{Path, PathBuf},
+};
 use windows::{
     Win32::{Foundation::*, Graphics::Gdi::*, System::Com::*, UI::Shell::*},
     core::HSTRING,
@@ -100,7 +103,7 @@ unsafe fn bitmap_png(bitmap: HBITMAP) -> Result<Vec<u8>, String> {
     }
 }
 
-pub fn load(id: i64) -> Result<Option<String>, String> {
+pub fn load(id: i64, location: bool) -> Result<Option<String>, String> {
     let path = crate::config::directory()
         .map_err(|e| e.to_string())?
         .join("history.db");
@@ -114,32 +117,107 @@ pub fn load(id: i64) -> Result<Option<String>, String> {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .map_err(|e| e.to_string())?;
-    match kind.as_str() {
+    let dir = std::env::temp_dir()
+        .join("Clipdeck-preview")
+        .join(std::process::id().to_string());
+    if let Some(path) = clip_file(&kind, &text, &payload, id, &dir)? {
+        if location {
+            reveal(&path)?;
+        } else {
+            super::open_external(&path.to_string_lossy())?;
+        }
+        Ok(None)
+    } else if location {
+        Err("This clip has no file location".into())
+    } else {
+        Ok(Some(text))
+    }
+}
+
+fn clip_file(
+    kind: &str,
+    text: &str,
+    payload: &[u8],
+    id: i64,
+    dir: &Path,
+) -> Result<Option<PathBuf>, String> {
+    match kind {
         "image" => {
-            let dir = std::env::temp_dir()
-                .join("Clipdeck-preview")
-                .join(std::process::id().to_string());
-            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
             let path = dir.join(format!("clip-{id}.png"));
             std::fs::write(&path, payload).map_err(|e| e.to_string())?;
-            super::open_external(&path.to_string_lossy())?;
-            Ok(None)
+            Ok(Some(path))
         }
         "files" => {
             let file = text.lines().next().ok_or("Empty file list")?;
             if !Path::new(file).exists() {
                 return Err("This file is no longer available".into());
             }
-            super::open_external(file)?;
-            Ok(None)
+            Ok(Some(PathBuf::from(file)))
         }
-        _ => Ok(Some(text)),
+        _ => Ok(None),
+    }
+}
+
+fn reveal(path: &Path) -> Result<(), String> {
+    unsafe {
+        let initialized = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if initialized != RPC_E_CHANGED_MODE {
+            initialized.ok().map_err(|e| e.to_string())?;
+        }
+        let result = (|| {
+            let mut pidl = std::ptr::null_mut();
+            SHParseDisplayName(&HSTRING::from(path.as_os_str()), None, &mut pidl, 0, None)?;
+            // With zero child items the Shell selects this item in its parent folder.
+            let result = SHOpenFolderAndSelectItems(pidl, None, 0);
+            CoTaskMemFree(Some(pidl.cast()));
+            result
+        })();
+        if initialized.is_ok() {
+            CoUninitialize();
+        }
+        result.map_err(|e: windows::core::Error| e.to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn location_uses_original_file_or_exports_stored_image() {
+        let dir = std::env::temp_dir().join(format!(
+            "clipdeck-location-test-{}-{}",
+            std::process::id(),
+            crate::clip::now()
+        ));
+        let payload = b"exact stored PNG bytes";
+        let image = clip_file("image", "", payload, 42, &dir).unwrap().unwrap();
+        assert_eq!(image, dir.join("clip-42.png"));
+        assert_eq!(std::fs::read(&image).unwrap(), payload);
+        let original = dir.join("copied file, été.mp4");
+        std::fs::write(&original, b"original").unwrap();
+        let files = format!("{}\n{}", original.display(), image.display());
+        assert_eq!(
+            clip_file("files", &files, b"", 99, &dir).unwrap(),
+            Some(original.clone())
+        );
+        assert_eq!(std::fs::read(&original).unwrap(), b"original");
+        assert!(
+            clip_file(
+                "files",
+                &dir.join("missing").to_string_lossy(),
+                b"",
+                0,
+                &dir
+            )
+            .is_err()
+        );
+        assert!(clip_file("files", "", b"", 0, &dir).is_err());
+        assert_eq!(clip_file("text", "hello", b"", 0, &dir).unwrap(), None);
+        std::fs::remove_file(original).unwrap();
+        std::fs::remove_file(image).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
     #[test]
     fn routes_extensions_case_insensitively() {
         for path in ["a.MP4", "b.mov", "c.mkv", "a.webm", "a.avi", "a.wmv"] {

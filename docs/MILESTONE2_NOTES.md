@@ -1,5 +1,28 @@
 # Clipdeck milestone 2
 
+## Open file location follow-up (2026-11-04)
+
+The context menu now includes **Open file location** directly below Preview.
+For file clips it opens Explorer with the first original file selected; a missing
+file reports an error. For image/screenshot clips it exports the stored PNG to
+the same `%TEMP%/Clipdeck-preview/<pid>/clip-<id>.png` used by Preview and
+selects that file. SQLite remains the authoritative image storage; this folder
+contains on-demand exports. The action is disabled for text/link/email clips.
+Export, path checking and native Shell selection run off the UI thread.
+
+No crate versions changed; the existing Windows dependency enables its
+`Win32_UI_Shell_Common` feature for native folder selection.
+`cargo fmt --check`, Clippy with warnings denied, all tests (**20 passed,
+1 ignored**), and the release build pass. Tests verify exact image export
+bytes, original file selection with spaces/commas/Unicode, first-file routing,
+and errors for missing/empty file lists.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| File and screenshot Open file location | FAIL - desktop verification incomplete | Automation could not discover the release popup (`app_not_found`); no Explorer-selection PASS claimed. Path/export behavior is unit-tested. |
+
+The rebuilt `m2-ux/target/release/clipdeck.exe` is left running for owner testing.
+
 ## Owner UX follow-up (2026-11-04)
 
 Local worktree: `m2-ux`, branch `Nour/m2-ux`, based on `Nour/m2-fixes`
