@@ -1,5 +1,128 @@
 # Clipdeck milestone 2
 
+## Design pass and second UX round (2026-11-04)
+
+Local branch `Nour/m2-polish` on top of `Nour/m2-ux`; no push. Rust 1.99.1,
+pinned crates unchanged, no new dependencies, no vendoring or patches.
+Screenshots are in `screenshots/polish/`: `before-*` from the previous
+release build (same HEAD as `m2-ux`) and `after-*` from this build, each in
+light and dark. All captures are real GPUI windows from an isolated fixture
+profile (`APPDATA=%TEMP%\clipdeck-polish`); the fixture database was given
+realistic source names and a curated order with SQL, nothing else.
+
+### Design
+
+- One spacing scale (4/8/12/16) and one type scale (13 titles, 12 meta,
+  11 labels and key caps) in `ui/theme.rs`, with the mockup's palette for
+  light and dark. Overlay colors are pre-blended so rings and fades match.
+- Header: search field with a leading icon and "Search your clipboard",
+  then keep-open, view-options and close icon buttons at the field's 32 px
+  height. Chips All, Links, Images, Text, Files, Pinned: 24 px, selected
+  filled, others outlined and quiet. Section labels are small muted text.
+- Rows: 52 px comfortable rows; a 44 px leading column shared by type tiles,
+  thumbnails (rounded, hairline border) and file mosaics. Title 13 px, meta
+  12 px muted. Re-copied bar (3 px, inset 10 px from the row radius) and the
+  "on clipboard now" dot (on the leading tile's corner, ringed in the row
+  color, with a tooltip). Image rows: "Screenshot of X" or "Image", with
+  dimensions in the meta line.
+- Inline actions (owner item 5): drawn over the right end of the row with a
+  24 px fade from the row color, so text never reflows. They show on the
+  selected row and on hover; hover gets a light tint, the keyboard selection
+  keeps its stronger color and does not follow the mouse. This works in
+  compact mode and while the popup is inactive (tray and keep-open).
+- Footer: key caps with labels, spread on one line; hints that do not fit
+  the current width are dropped from the end. Each view has its own hints.
+- Preview, Edit, Details, the file gallery and single-file preview share a
+  48 px header bar (back, title, quiet detail, buttons; primary filled) and a
+  padded body. Images fit a neutral well with size/dimensions under them.
+- Context menu: an icon per command, SPEC groups (Preview/Show/Open, Paste,
+  Pin/Edit, Delete, More) separated, key caps right-aligned, disabled
+  entries muted. It opens at the left inset so submenus open rightwards.
+- Status line above the footer for errors (danger icon, click to dismiss),
+  "Skipped N large clips" and "Recording paused".
+
+### Copying several files
+
+- Bug fixed: `files::route` makes CF_HDROP win unless it names exactly one
+  image file and a bitmap came with it. Covered by
+  `routes_drop_lists_ahead_of_bitmaps`. The original report reproduced on
+  the old build: a 5-file copy with a bitmap became an image clip.
+- At capture (off the UI thread) each file gets a kind code (folder checks
+  for the first 1,000) and the clip gets an 88×64 mosaic: up to four cells of
+  Shell thumbnails (images, videos) or Shell type icons; more than four files
+  leave the last cell for a "+N" badge drawn by the row.
+- Title: one file shows its name; several show "5 files" plus
+  "ui.png, notes.pdf, demo.mp4 +2". Meta: "3 images · 1 video · 1 PDF ·
+  Orca · 2 min ago" (three groups at most, the rest folded into "N more").
+- Space opens a gallery of every file (Shell thumbnails, names, missing
+  files dimmed with "Missing"); arrows move, Enter pastes that file only,
+  Space opens its large preview, Esc goes back. A one-file clip opens
+  straight into the large preview.
+- Paste pastes all files. Paste as… adds Paths as text, File names only,
+  Only the images (N) for mixed sets, and a One file ▸ submenu (first 40).
+  Subsets are written as CF_HDROP with Preferred DropEffect = copy.
+- File clips show under Files, and under Images when every file is an image.
+  Lists now return the full path list for file clips (other kinds remain
+  truncated to 512 characters).
+
+### Paste indicator
+
+Schema v5 adds `plain_pastes` (and `file_kinds`); v4 counts stay as normal
+pastes since their format was not recorded. Normal paste and plain-text
+paste (including text transforms, Paths as text and File names only) count
+separately. The matching inline action is tinted green with "×N" under the
+icon from the second paste; unselected rows show the same quiet icons in the
+trailing slot. The "✓ pasted N×" text is gone.
+
+### Density, resizing, keep open
+
+- Comfortable and Compact (30 px rows, 16 px icon or tiny thumbnail,
+  right-aligned short time) from the header menu or Ctrl+D; saved as
+  `density` in config.toml.
+- The frameless popup resizes from its edges and a wider bottom-right grip
+  (own WM_NCHITTEST), minimum 360×320 (WM_GETMINMAXINFO). Size is saved as
+  `width`/`height` and reused at every open, clamped to the work area.
+- Keep open on top (header toggle, saved as `keep_open`): no hiding on focus
+  loss or after paste, drag by the end of the chip row (grip shown), position
+  saved as `x`/`y` and reused, pastes go to `foreground::last_app()`. Esc and
+  close still hide it.
+- Settings are written by replacing top-level keys in place, so comments and
+  other keys survive (`set_key`, tested).
+- Placement is posted to the window's own message loop. A SetWindowPos made
+  during a GPUI update delivered WM_SIZE while the window was borrowed, so
+  GPUI kept laying out at the old size; GPUI's deferred first placement is
+  also re-applied after activation. This removes the oversized first frame
+  visible in `before-list-dark.png`.
+
+### Checks
+
+`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and
+`cargo test`: **45 passed, 2 ignored**. The opt-in real clipboard test
+(`live_listener_privacy_formats_and_own_marker`) was rerun and passes. New
+tests: file routing, type breakdown, titles, kind codes, CF_HDROP layout,
+mosaic cells, Shell alpha conversion, row titles/meta, filter membership,
+v4→v5 migration, separate normal/plain counters and their reset on edit,
+full file lists, density/size/keep/position config round-trips and
+fallbacks, work-area fitting, resize hit-testing, file transforms, sizes.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Multi-file copy from Explorer, mixed types | PASS | In Explorer, Ctrl+A and Ctrl+C on 9 items (folder, zip, mp4, png ×2, jpg, rs, pdf, docx). SQLite shows one `files` clip with kinds `fzvicpidi`, a mosaic thumbnail and the CF_HDROP blob. Row: `after-explorer-9-files-dark.png`; gallery: `after-gallery-*.png`. |
+| 5 files + bitmap (Orca tree case) | PASS | Fixture put CF_HDROP of 5 files plus a DIB of the first. Old build stored a 1280×720 image; this build stores a 5-file clip (`after-list-*.png`, "5 files ui.png, notes.pdf, demo.mp4 +2"). |
+| Paste one file | PASS | Explorer focused on an empty folder, hotkey, Space on the 9-file clip, → to ditto.png, Enter. The folder then contained only `ditto.png`. |
+| Paste all files | PASS | Same folder emptied, hotkey, Enter on the clip: all 9 items arrived, including `assets\logo.svg`. Clip `pastes` = 2. |
+| Resize + reopen | PASS | Dragged the bottom-right grip: 600×600, then below the minimum: 360×320 (`after-resized-min-dark.png`), then 620×450. config.toml held each size; after hiding, the hotkey reopened at the cursor at 620×450. |
+| Keep on top + paste into a text app | PASS (not Notepad) | Keep-open on, hotkey from the target, Enter: text pasted, popup stayed visible and the target kept focus. Clicking a row in the inactive popup and pressing Enter, or the inline plain-text button, pasted again; counters rose. Dragging by the chip-row end moved it; config saved x/y; hiding and pressing the hotkey elsewhere reopened at the saved spot. The target was a Tk text window of mine: Notepad merged my file into an existing Notepad window holding another unsaved document, so I did not type into Notepad. |
+| Keep-open Shift+Enter | PASS with human timing | With a 60 ms gap between injected keys the plain paste arrives. A single zero-gap injected Shift+Enter chord was counted as sent but not inserted by the Tk box; normal mode pasted the same chord fine. |
+| Hover actions while inactive | PASS | Kept-open popup behind the focused target; hovering rows showed the tint and overlay, the pasted row's icon green with ×2 (`after-inactive-hover-dark.png`). |
+| Missing files, error status | PASS | A 3-file clip whose middle file was deleted: gallery shows it dimmed and "Missing"; Open in default app shows the error line (`after-status-error-dark.png`). |
+| Light and dark | PASS | Every `after-*` surface captured in both; `AppsUseLightTheme` toggled and restored to 0. |
+| Windows 10 fallback, mixed DPI | Not checked | Single 100%-scale Windows 11 monitor. |
+
+Notepad note: the empty `keep-target.txt` tab I opened is still in that
+existing Notepad window; nothing was typed there and its other tab was not
+modified (one click landed in its text area).
+
 ## Open file location follow-up (2026-11-04)
 
 The context menu now includes **Open file location** directly below Preview.
