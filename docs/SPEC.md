@@ -59,7 +59,18 @@ The visual reference for the popup and menu is `docs/mockup.html`.
 2. **Real app** — SQLite history, images and file lists, tray icon, pinning, filter chips,
    the mockup's popup and right-click menu (with paste-as transforms), a config file for
    hotkey and history size.
-3. **Polish** — Ditto import, collections, sensitive-text masking, settings UI, autostart.
+3. **Productivity** — Ditto import, collections, sensitive-text masking, settings UI, autostart,
+   plus the owner's picks:
+   - **Paste queue:** copy several items, then paste them one after another in order.
+   - **Smart actions by type:** links (strip `utm_*` and other tracking parameters, copy as a
+     Markdown link), JSON (format or minify), colors (swatch, convert hex/RGB/HSL), file paths
+     (open the containing folder).
+   - **Ignore apps:** a list of apps whose copies are never recorded.
+   - **Multi-select:** select several clips and paste them joined by new lines or commas.
+   - **Undo delete:** a brief "Deleted · Undo" message.
+   - **Search filters:** `app:chrome`, `type:image`, `today`.
+   - **Source app icons** in the meta line instead of the app name.
+   - **Drag out:** drag a clip from the popup into any app (images and files especially).
 
 ### Spike acceptance
 
