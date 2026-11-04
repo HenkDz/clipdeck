@@ -24,7 +24,7 @@ static EVENTS: std::sync::OnceLock<async_channel::Sender<Event>> = std::sync::On
 pub fn set_current(id: i64, sequence: u32) {
     set_current_ids(vec![id], sequence);
 }
-fn set_current_ids(ids: Vec<i64>, sequence: u32) {
+pub fn set_current_ids(ids: Vec<i64>, sequence: u32) {
     if unsafe { GetClipboardSequenceNumber() } == sequence
         && let Ok(mut current) = CURRENT.lock()
     {
@@ -243,17 +243,32 @@ impl Clipboard {
         changed();
         Ok(())
     }
-    pub fn write_clips(self, clips: &[crate::clip::Clip], plain: bool) -> Result<()> {
-        if clips.len() == 1 {
-            return self.write_clip(&clips[0], plain).map(|_| ());
+    pub fn write_clips(
+        self,
+        clips: &[crate::clip::Clip],
+        plain: bool,
+    ) -> Result<crate::clip::Clip> {
+        let mut batch = if clips.len() == 1 {
+            clips[0].clone()
+        } else {
+            super::batch::prepare(clips, plain).map_err(|e| {
+                windows::core::Error::new(windows::core::HRESULT(0x80070057u32 as i32), e)
+            })?
+        };
+        batch.sequence = self.write_clip(&batch, plain)?;
+        if batch.sequence == 0 {
+            return Err(windows::core::Error::new(
+                windows::core::HRESULT(0x80004005u32 as i32),
+                "Clipboard copy could not be confirmed; please try again",
+            ));
         }
-        let batch = super::batch::prepare(clips, plain).map_err(|e| {
-            windows::core::Error::new(windows::core::HRESULT(0x80070057u32 as i32), e)
-        })?;
-        let sequence = self.write_clip(&batch, plain)?;
-        set_current_ids(clips.iter().map(|c| c.id).collect(), sequence);
+        set_current_ids(clips.iter().map(|c| c.id).collect(), batch.sequence);
         changed();
-        Ok(())
+        // Show the copied markers before waiting for Shell extensions to make the group thumbnail.
+        if clips.len() > 1 && batch.kind == "files" {
+            super::preview::summarize_files(&mut batch);
+        }
+        Ok(batch)
     }
     pub fn write(self, text: &str) -> Result<u32> {
         let wide: Vec<u8> = text

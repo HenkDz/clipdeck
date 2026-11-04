@@ -119,7 +119,7 @@ fn live_listener_privacy_formats_and_own_marker() {
     let dir = std::env::temp_dir().join(format!("clipdeck-batch-live-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let paths = [dir.join("one, été.txt"), dir.join("two.txt")];
-    let files = paths
+    let mut files = paths
         .iter()
         .enumerate()
         .map(|(ix, path)| {
@@ -151,9 +151,55 @@ fn live_listener_privacy_formats_and_own_marker() {
         }
     }
     assert!(is_current(45) && is_current(46));
+    let db = dir.join("history.db");
+    let mut store = crate::store::Store::open(&db, 20, 16).unwrap();
+    for clip in &mut files {
+        clip.id = store.record(clip, false, false).unwrap().unwrap();
+    }
+    let members = files
+        .iter()
+        .map(|c| (c.id, crate::store::content_hash(&c.kind, &c.payload)))
+        .collect::<Vec<_>>();
+    let group = clipboard.write_clips(&files, false).unwrap();
+    let current = store.copied(&group, &members).unwrap();
+    set_current_ids(current.clone(), group.sequence);
+    let mut saved = store.list("").unwrap().remove(0);
+    assert_eq!(saved.file_count, 2);
+    assert!(files.iter().all(|c| is_current(c.id)) && is_current(saved.id));
+    assert_eq!(store.list("").unwrap().len(), 3);
+    assert!(
+        store.list("").unwrap()[1..]
+            .iter()
+            .all(|c| c.copies == 2 && c.pastes == 0)
+    );
+    store.hydrate(&mut saved).unwrap();
+    clipboard.write_clip(&saved, false).unwrap();
+    {
+        use windows::Win32::UI::Shell::*;
+        let _guard = open(owner).unwrap();
+        let drop = HDROP(unsafe { GetClipboardData(15).unwrap() }.0);
+        assert_eq!(unsafe { DragQueryFileW(drop, u32::MAX, None) }, 2);
+        for (ix, path) in paths.iter().enumerate() {
+            let mut name = [0u16; 32768];
+            let len = unsafe { DragQueryFileW(drop, ix as u32, Some(&mut name)) } as usize;
+            assert_eq!(
+                std::path::PathBuf::from(String::from_utf16_lossy(&name[..len])),
+                *path
+            );
+        }
+    }
+    // An older completion must not attach the group's current marker to a later copy.
     clipboard
         .write("Clipdeck batch clipboard verification")
         .unwrap();
+    set_current_ids(current, group.sequence);
+    assert!(!is_current(saved.id));
+    thread::sleep(Duration::from_millis(250));
+    assert!(
+        !std::iter::from_fn(|| receiver.try_recv().ok()).any(|e| matches!(e, Event::Clip { .. }))
+    );
+    drop(store);
+    std::fs::remove_file(db).unwrap();
     for path in paths {
         std::fs::remove_file(path).unwrap();
     }

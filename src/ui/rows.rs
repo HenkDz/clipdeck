@@ -374,22 +374,29 @@ impl Popup {
             .rounded(radius)
             .bg(row_bg)
             .when(!selected, |el| el.hover(|s| s.bg(p.hover)))
-            .children((clip.copies > 1).then(|| {
-                div()
-                    .absolute()
-                    .left_0()
-                    .top(inset)
-                    .bottom(inset)
-                    .w(px(3.))
-                    .rounded_full()
-                    .bg(p.accent)
-            }))
+            .children(
+                (clip.copies > 1 || crate::platform::is_current(id)).then(|| {
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top(inset)
+                        .bottom(inset)
+                        .w(px(3.))
+                        .rounded_full()
+                        .bg(p.accent)
+                }),
+            )
             .child(self.leading(clip, row_bg, p))
             .child(text)
             .child(Self::indicators(clip, compact, p))
             .child(actions)
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 let mods = event.modifiers();
+                if mods.control || mods.shift {
+                    this.mode.search();
+                    crate::platform::mouse_mode(window, false, this.target);
+                    this.activate(window, cx);
+                }
                 this.selection.click(
                     &this.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
                     id,

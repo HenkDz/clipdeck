@@ -22,7 +22,7 @@ pub use time::{is_today, when};
 
 pub use clipboard::{Clipboard, start_watcher};
 pub use clipboard::{clipboard_batch_sent, paste_sent};
-pub use clipboard::{is_current, set_current};
+pub use clipboard::{is_current, set_current, set_current_ids};
 pub use focus::{Target, configure_popup, hide_popup};
 pub use foreground::last_app;
 pub use instance::Instance;

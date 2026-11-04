@@ -80,6 +80,11 @@ impl Popup {
         cx: &mut Context<Self>,
     ) {
         let ids = self.action_ids(id);
+        if cmd == Command::Copy {
+            self.status = None;
+            self.clipboard_command(ids, cmd, window, cx);
+            return;
+        }
         if matches!(self.view, View::List) && ids.len() > 1 {
             self.status = None;
             self.batch_command(ids, cmd, window, cx);

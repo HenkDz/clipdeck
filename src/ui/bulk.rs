@@ -101,7 +101,7 @@ impl Popup {
                 }
                 clips.push(clip);
             }
-            clipboard
+            let written = clipboard
                 .write_clips(&clips, plain)
                 .map_err(|e| e.to_string())?;
             if paste {
@@ -115,18 +115,48 @@ impl Popup {
                     plain,
                 );
             }
-            Ok::<(), String>(())
+            Ok::<_, String>((!paste).then(|| {
+                (
+                    written,
+                    clips
+                        .iter()
+                        .map(|clip| (clip.id, store::content_hash(&clip.kind, &clip.payload)))
+                        .collect::<Vec<_>>(),
+                )
+            }))
         });
         if paste && !keep {
             platform::hide_popup(window);
         }
         cx.spawn(async move |this, cx| {
-            if let Err(error) = task.await {
-                let _ = this.update(cx, |this, cx| {
-                    this.status = Some(Status::Error(error));
-                    cx.notify();
-                });
-            }
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(Some((written, members))) => {
+                        let saved = this.store.borrow_mut().copied(&written, &members);
+                        match saved {
+                            Ok(current) => {
+                                platform::set_current_ids(current, written.sequence);
+                                this.status = Some(Status::Info(if members.len() > 1 {
+                                    format!("Copied {} items as one batch", members.len())
+                                } else {
+                                    "Copied to clipboard".into()
+                                }));
+                            }
+                            Err(error) => {
+                                this.status = Some(Status::Error(format!(
+                                    "Copied to clipboard, but history was not updated: {error}"
+                                )))
+                            }
+                        }
+                        this.reload(cx);
+                        this.list.scroll_to_reveal_item(0);
+                    }
+                    Ok(None) => {}
+                    Err(error) => this.status = Some(Status::Error(error)),
+                }
+                cx.notify();
+            });
         })
         .detach();
     }

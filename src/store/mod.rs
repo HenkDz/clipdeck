@@ -1,4 +1,7 @@
+#[cfg(test)]
+mod copy_tests;
 mod tests;
+mod write;
 use crate::clip::{Clip, Format};
 use rusqlite::{Connection, Result, params};
 use sha2::{Digest, Sha256};
@@ -144,54 +147,6 @@ impl Store {
         };
         store.retain()?;
         Ok(store)
-    }
-    // Only admitted captures and explicit edits/seeds reach this writer. Clipboard exclusions are checked before capture construction.
-    pub fn record(&mut self, clip: &Clip, own_write: bool, excluded: bool) -> Result<Option<i64>> {
-        if own_write || excluded || clip.payload.is_empty() {
-            return Ok(None);
-        }
-        let size = if clip.kind == "image" {
-            clip.payload.len().saturating_add(clip.thumbnail.len())
-        } else {
-            clip.text
-                .len()
-                .saturating_add(if clip.payload == clip.text.as_bytes() {
-                    0
-                } else {
-                    clip.payload.len()
-                })
-                .saturating_add(clip.thumbnail.len())
-                .saturating_add(clip.formats.iter().map(|f| f.data.len()).sum::<usize>())
-        };
-        if size > self.max_clip_bytes {
-            self.skipped += 1;
-            eprintln!(
-                "Skipping clip: {size} bytes exceeds max_clip_mb ({} bytes)",
-                self.max_clip_bytes
-            );
-            return Ok(None);
-        }
-        let hash = content_hash(&clip.kind, &clip.payload);
-        let tx = self.db.transaction()?;
-        tx.execute("INSERT INTO clips(kind,text,search,payload,hash,thumbnail,source,created,updated,rank,pinned,file_path,screenshot_title,source_exe,file_kinds)
-            VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT COALESCE(MAX(rank),0)+1 FROM clips),0,?10,?11,?12,?13)
-            ON CONFLICT(kind,hash) DO UPDATE SET text=excluded.text,payload=excluded.payload,search=excluded.search,thumbnail=excluded.thumbnail,source=excluded.source,updated=excluded.updated,copies=clips.copies+1,file_path=CASE WHEN excluded.file_path<>'' THEN excluded.file_path ELSE clips.file_path END,screenshot_title=CASE WHEN excluded.screenshot_title<>'' THEN excluded.screenshot_title ELSE clips.screenshot_title END,source_exe=excluded.source_exe,file_kinds=excluded.file_kinds,rank=(SELECT COALESCE(MAX(rank),0)+1 FROM clips)",
-            params![clip.kind,clip.text,search_text(&clip.text),(clip.payload != clip.text.as_bytes()).then_some(&clip.payload),hash,clip.thumbnail,clip.source,clip.created,clip.updated,clip.file_path,clip.screenshot_title,clip.source_exe,clip.file_kinds])?;
-        let id: i64 = tx.query_row(
-            "SELECT id FROM clips WHERE kind=?1 AND hash=?2",
-            params![clip.kind, hash],
-            |r| r.get(0),
-        )?;
-        tx.execute("DELETE FROM formats WHERE clip_id=?1", [id])?;
-        for f in clip.formats.iter().filter(|_| clip.kind != "image") {
-            tx.execute(
-                "INSERT INTO formats VALUES(?1,?2,?3)",
-                params![id, f.name, f.data],
-            )?;
-        }
-        tx.execute("DELETE FROM clips WHERE pinned=0 AND id NOT IN(SELECT id FROM clips WHERE pinned=0 ORDER BY rank DESC LIMIT ?1)", [self.limit as i64])?;
-        tx.commit()?;
-        Ok(Some(id))
     }
     pub fn list(&self, query: &str) -> Result<Vec<Clip>> {
         let q = query.to_lowercase();
