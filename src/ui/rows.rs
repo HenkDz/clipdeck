@@ -43,12 +43,12 @@ fn kind_style(clip: &Clip, p: Palette) -> (IconName, (Hsla, Hsla)) {
     }
 }
 
-/// A paste glyph tinted green once used, with a tiny "×N" under it from the second paste.
+/// A paste glyph tinted green once used, with its count beside it.
 pub(super) fn paste_glyph(name: IconName, count: i64, size: Pixels, p: Palette) -> Div {
     div()
         .flex()
-        .flex_col()
         .items_center()
+        .gap(px(2.))
         .child(if count > 0 {
             icon(name, size, p.success)
         } else {
@@ -301,8 +301,16 @@ impl Popup {
                     .rounded_r(if self.compact() { px(6.) } else { RADIUS })
                     .children(buttons.into_iter().map(|(name, label, cmd, count)| {
                         let danger = cmd == Command::Delete;
-                        ghost((label, id as u64), label, side, p)
-                            .when(danger, |el| el.hover(move |s| s.text_color(p.danger)))
+                        let colors = if danger {
+                            Palette {
+                                text: p.danger,
+                                ..p
+                            }
+                        } else {
+                            p
+                        };
+                        ghost((label, id as u64), label, side, colors)
+                            .when(count >= 2, |el| el.w_auto().min_w(side).px(S1))
                             .child(paste_glyph(name, count, glyph, p))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();

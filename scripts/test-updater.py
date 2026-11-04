@@ -1,5 +1,5 @@
 """Native updater acceptance. Requires a debug baseline, a newer release EXE, and the signing account."""
-import argparse, ctypes, hashlib, io, json, os, secrets, shutil, sqlite3, subprocess, time
+import argparse, ctypes, hashlib, io, json, os, secrets, shutil, sqlite3, subprocess, time, tomllib
 from pathlib import Path
 from PIL import Image
 
@@ -95,7 +95,8 @@ def test(case,baseline,candidate):
     env=dict(os.environ,APPDATA=str(root/'roaming'),LOCALAPPDATA=str(root/'local'))
     db=seed(root/'roaming');before=contents(db)
     stage=root/'local/Clipdeck/updates'/secrets.token_hex(16);stage.mkdir(parents=True)
-    payload,version=(failure_exe(root) if case=='startup-failure' else (candidate,'0.1.2'))
+    version=tomllib.loads((repo/'Cargo.toml').read_text())['package']['version']
+    payload,version=(failure_exe(root) if case=='startup-failure' else (candidate,version))
     shutil.copyfile(payload,stage/'download.exe')
     schema=6 if case=='startup-failure' else 5
     (stage/'update.toml').write_text(f'format=1\nversion="{version}"\nsize={payload.stat().st_size}\nsha256="{digest(payload)}"\nschema={schema}\nnotes="Isolated native acceptance"\n',encoding='utf-8')
