@@ -1,5 +1,55 @@
 # Clipdeck milestone 2
 
+## Milestone 2 review follow-up (2026-11-04)
+
+Local follow-up on `Nour/m2-fixes`, based on `Nour/m2`; no remote operations.
+`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+`cargo test -- --nocapture` pass: **17 passed, 1 ignored**. The ignored test
+writes the real clipboard and was not rerun for this follow-up.
+
+Schema v2 migrates v1 transactionally, retaining IDs, pin/recency metadata,
+thumbnails and original format blobs. It rebuilds FTS and vacuums after the
+conversion to reclaim old payload/index pages. Migration failure rolls back;
+unknown future versions are rejected. Existing clips are preserved regardless
+of the new capture cap. Conversion and vacuum need temporary disk space.
+
+- Dedupe uses `UNIQUE(kind,hash)`, where hash is SHA-256 of UTF-8 kind, a NUL
+  separator, and the full primary payload. `sha2` reuses locked version 0.11.1.
+- When payload bytes equal UTF-8 text bytes, `payload` is SQL NULL; hydration
+  derives it with `CAST(text AS BLOB)`. Distinct binary payloads remain blobs.
+  Original clipboard formats, including Unicode/RTF/HTML, remain intact.
+- Search lowercases only a UTF-8 boundary-safe prefix and caps the result at
+  65,536 bytes. Both the search column and FTS index use that prefix. Text after
+  it is available for pasting/editing, but is intentionally not searchable.
+- Lists return `substr(text,1,512)`, metadata and thumbnails. Full text, payload
+  and formats load in `hydrate()` for actions, including editing and opening
+  links. File-count metadata is computed from the full file list; labels use
+  `1 file` and `N files`.
+- `max_clip_mb = 16` is in newly generated config.toml; existing configs use
+  that default when absent. Values 1–128 are accepted, in MiB. Admission counts
+  full text, distinct primary payload, thumbnail and all original format bytes;
+  exceeding the cap logs a diagnostic and skips the entire write, including
+  recopy updates. Oversized edits fail without modifying the stored clip.
+  The 128 MiB per-format read guard remains an allocation safeguard.
+- Context menus start at the left inset, leaving room for the submenu inside
+  the 480px popup. Real desktop verification opened Paste as to the right,
+  inspected all four transform items and checked Escape dismissal. The new
+  `screenshots/paste-as.png` is an unmodified GPUI window capture from an
+  isolated `%TEMP%\clipdeck-m2-review` fixture profile.
+
+Reproducible size measurement: run
+`cargo test v1_migration_preserves_content_and_reclaims_space -- --nocapture`.
+The test creates an on-disk v1 database from `src/store/v1.sql` (the previous
+schema and triggers), inserts one 5 MiB ASCII text clip (`x` repeated 5,242,880
+times), its identical payload, a two-byte thumbnail and a three-byte format
+fixture, then measures the database file before and after migration/vacuum and
+WAL checkpoint. Result: **26,361,856 bytes (25.14 MiB) → 5,427,200 bytes
+(5.18 MiB), 79.4% smaller**. This fixture's FTS content differs from the review's
+31.5 MB example; the before/after comparison uses the same clip and SQLite build.
+Tests also verify migration rollback/binary preservation, hash recopy promotion,
+kind separation, UTF-8 search bounds, cap enforcement including rich formats,
+and preview-only listing followed by exact hydration.
+
 Local branch `Nour/m2`, Windows x64, Rust 1.99.1. No remote operations.
 The implementation is present; Paint-specific acceptance remains blocked by
 the host's missing Paint installation. WordPad is also absent; Word was used
@@ -85,7 +135,7 @@ working set and 88.875 MiB private memory.
 ## Implementation choices and limits
 
 - `history.db` and `config.toml` live under `%APPDATA%\Clipdeck`. Schema version
-  is `PRAGMA user_version=1`; unknown future versions are rejected. Bundled
+  is `PRAGMA user_version=2`; unknown future versions are rejected. Bundled
   SQLite verified FTS5 with the trigram tokenizer. Literal wildcard searches
   and short queries retain substring semantics; LIKE is the fallback when
   FTS5 creation is unavailable.
