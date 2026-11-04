@@ -1,5 +1,60 @@
 # Clipdeck milestone 2
 
+## Owner UX follow-up (2026-11-04)
+
+Local worktree: `m2-ux`, branch `Nour/m2-ux`, based on `Nour/m2-fixes`
+at `f3a97e8`. The owner's existing worktree/branch was not moved. No push.
+Rust 1.99.1 and the existing crate versions; no vendoring or patches.
+
+Popup uses DWM round corners and the theme border color. The client border
+is used only when DWM corner preference is unavailable, with square corners.
+The native resize inset is removed so content fills the window.
+
+Tray opens now use a separate inactive mouse mode, WS_EX_NOACTIVATE,
+SW_SHOWNOACTIVATE and MA_NOACTIVATE. The remembered app is restored immediately.
+Row single-click selects; double-click and the inline Paste button paste.
+Mouse paste checks the already-foreground target; keyboard paste retains
+foreground restoration. Clicking search activates keyboard mode. The tray
+toggles visibility, the header has an accessible close button, and the existing
+foreground hook hides mouse mode when another application becomes foreground.
+
+**Owner correction during verification:** Preview and Space open image/file
+clips in their default application, instead of displaying media inside the
+popup. Stored image clips are written unchanged to
+`%TEMP%/Clipdeck-preview/<pid>/clip-<id>.png`. These temporary exports remain
+available to the viewer; automatic cleanup is deferred. A file-list Preview
+opens its first file. Text Preview remains full, read-only and scrollable;
+Space/Esc or its close control dismiss it. Hydration/export/open work runs in
+the background. New image/video file captures store a small Shell thumbnail;
+old file rows acquire one when copied again. Missing files report an error.
+There is no video decoder or in-popup media/duration panel after the correction.
+
+Final source checks: `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings`, `cargo test`:
+**19 passed, 1 ignored**. The existing real-clipboard test was not rerun.
+`cargo build --release` passed. One intermediate build encountered a running
+executable lock; stopping that copy and rebuilding succeeded.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Before border, light/dark | PASS | Actual original release captures: `screenshots/ux-before-light.png`, `ux-before-dark.png`. |
+| Single native border, light/dark | PASS | Actual release popup captures: `screenshots/ux-popup-light.png`, `ux-popup-dark.png`; content fills the 480px window. |
+| Image/video file row thumbnail | PASS for video | Copied a generated two-second H.264 MP4 from Explorer. Actual captured row shows its frame in `screenshots/ux-video-row.png`. Image-file row was not separately checked. |
+| External image Preview | FAIL - verification incomplete | Implemented owner correction; GUI verification was stopped by physical Escape before the final external viewer check. |
+| External video Preview | FAIL - verification incomplete | Preview is first in the actual context menu. External player verification was stopped by physical Escape. |
+| Text Preview and Space/Esc | FAIL - verification incomplete | Implemented; final text desktop check was not completed. |
+| Chrome tray double-click at caret | FAIL - verification incomplete | Automation activates target windows before input, preventing reliable proof of uninterrupted inactive-popup focus. No PASS claimed. |
+| Notepad tray double-click at caret | FAIL - verification incomplete | Same tool limitation; Notepad target was restored and inspected, but final tray paste was not certified. |
+| Tray toggle, search mode, close, foreground dismissal | FAIL - verification incomplete | Implemented with unit-tested mode transitions; final desktop matrix was interrupted. |
+| Hotkey activated path | PASS for opening | Actual Ctrl+Shift+V reopened/reset and placed the release popup. Final paste regression was not completed. |
+| Windows 10 fallback | FAIL - unavailable | This host is Windows 11; fallback remains source-verified only. |
+
+Desktop automation stopped when the physical Escape key interrupted Computer
+Use. No further UI actions were attempted. The final release executable was
+left running from `m2-ux/target/release/clipdeck.exe` for owner testing.
+The earlier small in-popup media screenshots were discarded because they
+describe behavior superseded by the owner's correction.
+
 ## Milestone 2 review follow-up (2026-11-04)
 
 Local follow-up on `Nour/m2-fixes`, based on `Nour/m2`; no remote operations.
