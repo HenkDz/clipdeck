@@ -35,7 +35,7 @@ pub(crate) fn content_hash(kind: &str, payload: &[u8]) -> Vec<u8> {
 
 pub fn migrate(db: &mut Connection) -> Result<bool> {
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version > 4 {
+    if version > 5 {
         return Err(rusqlite::Error::InvalidQuery);
     }
     // Preserve formats referencing stable clip IDs while replacing the parent table.
@@ -95,6 +95,14 @@ pub fn migrate(db: &mut Connection) -> Result<bool> {
         }
         if version < 4 {
             tx.execute_batch("ALTER TABLE clips ADD COLUMN pastes INTEGER NOT NULL DEFAULT 0; PRAGMA user_version=4;")?;
+        }
+        // Earlier paste counts did not record the format; they remain normal pastes.
+        if version < 5 {
+            tx.execute_batch(
+                "ALTER TABLE clips ADD COLUMN plain_pastes INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE clips ADD COLUMN file_kinds TEXT NOT NULL DEFAULT '';
+                PRAGMA user_version=5;",
+            )?;
         }
         let had_fts: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='clips_fts')",
@@ -165,10 +173,10 @@ impl Store {
         }
         let hash = content_hash(&clip.kind, &clip.payload);
         let tx = self.db.transaction()?;
-        tx.execute("INSERT INTO clips(kind,text,search,payload,hash,thumbnail,source,created,updated,rank,pinned,file_path,screenshot_title,source_exe)
-            VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT COALESCE(MAX(rank),0)+1 FROM clips),0,?10,?11,?12)
-            ON CONFLICT(kind,hash) DO UPDATE SET text=excluded.text,payload=excluded.payload,search=excluded.search,thumbnail=excluded.thumbnail,source=excluded.source,updated=excluded.updated,copies=clips.copies+1,file_path=CASE WHEN excluded.file_path<>'' THEN excluded.file_path ELSE clips.file_path END,screenshot_title=CASE WHEN excluded.screenshot_title<>'' THEN excluded.screenshot_title ELSE clips.screenshot_title END,source_exe=excluded.source_exe,rank=(SELECT COALESCE(MAX(rank),0)+1 FROM clips)",
-            params![clip.kind,clip.text,search_text(&clip.text),(clip.payload != clip.text.as_bytes()).then_some(&clip.payload),hash,clip.thumbnail,clip.source,clip.created,clip.updated,clip.file_path,clip.screenshot_title,clip.source_exe])?;
+        tx.execute("INSERT INTO clips(kind,text,search,payload,hash,thumbnail,source,created,updated,rank,pinned,file_path,screenshot_title,source_exe,file_kinds)
+            VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT COALESCE(MAX(rank),0)+1 FROM clips),0,?10,?11,?12,?13)
+            ON CONFLICT(kind,hash) DO UPDATE SET text=excluded.text,payload=excluded.payload,search=excluded.search,thumbnail=excluded.thumbnail,source=excluded.source,updated=excluded.updated,copies=clips.copies+1,file_path=CASE WHEN excluded.file_path<>'' THEN excluded.file_path ELSE clips.file_path END,screenshot_title=CASE WHEN excluded.screenshot_title<>'' THEN excluded.screenshot_title ELSE clips.screenshot_title END,source_exe=excluded.source_exe,file_kinds=excluded.file_kinds,rank=(SELECT COALESCE(MAX(rank),0)+1 FROM clips)",
+            params![clip.kind,clip.text,search_text(&clip.text),(clip.payload != clip.text.as_bytes()).then_some(&clip.payload),hash,clip.thumbnail,clip.source,clip.created,clip.updated,clip.file_path,clip.screenshot_title,clip.source_exe,clip.file_kinds])?;
         let id: i64 = tx.query_row(
             "SELECT id FROM clips WHERE kind=?1 AND hash=?2",
             params![clip.kind, hash],
@@ -195,11 +203,11 @@ impl Store {
                 .replace('_', "\\_")
         );
         let sql = if self.fts && !q.contains(['%', '_', '\\']) {
-            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1) ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,CASE WHEN kind='files' THEN text ELSE substr(text,1,512) END,X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes,plain_pastes,file_kinds FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1) ORDER BY pinned DESC,rank DESC"
         } else if self.fts {
-            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1 ESCAPE '\\') ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,CASE WHEN kind='files' THEN text ELSE substr(text,1,512) END,X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes,plain_pastes,file_kinds FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1 ESCAPE '\\') ORDER BY pinned DESC,rank DESC"
         } else {
-            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes FROM clips WHERE search LIKE ?1 ESCAPE '\\' ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,CASE WHEN kind='files' THEN text ELSE substr(text,1,512) END,X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes,plain_pastes,file_kinds FROM clips WHERE search LIKE ?1 ESCAPE '\\' ORDER BY pinned DESC,rank DESC"
         };
         self.db
             .prepare(sql)?
@@ -207,6 +215,8 @@ impl Store {
                 Ok(Clip {
                     copies: r.get(10)?,
                     pastes: r.get(14)?,
+                    plain_pastes: r.get(15)?,
+                    file_kinds: r.get(16)?,
                     file_path: r.get(11)?,
                     screenshot_title: r.get(12)?,
                     source_exe: r.get(13)?,
@@ -248,10 +258,14 @@ impl Store {
         self.db.execute("DELETE FROM clips WHERE id=?1", [id])?;
         Ok(())
     }
-    pub fn mark_pasted(&mut self, id: i64, hash: &[u8]) -> Result<()> {
+    pub fn mark_pasted(&mut self, id: i64, hash: &[u8], plain: bool) -> Result<()> {
         // A delayed completion must not mark a different clip after edit/deletion/ID reuse.
         self.db.execute(
-            "UPDATE clips SET pastes=pastes+1 WHERE id=?1 AND hash=?2",
+            if plain {
+                "UPDATE clips SET plain_pastes=plain_pastes+1 WHERE id=?1 AND hash=?2"
+            } else {
+                "UPDATE clips SET pastes=pastes+1 WHERE id=?1 AND hash=?2"
+            },
             params![id, hash],
         )?;
         Ok(())
@@ -272,7 +286,7 @@ impl Store {
             ));
         }
         let tx = self.db.transaction()?;
-        tx.execute("UPDATE clips SET kind=?1,text=?2,search=?3,payload=NULL,hash=?4,pastes=CASE WHEN hash=?4 THEN pastes ELSE 0 END WHERE id=?5 AND kind IN('text','link','email')",params![crate::clip::detect(text),text,search_text(text),content_hash(crate::clip::detect(text),text.as_bytes()),id])?;
+        tx.execute("UPDATE clips SET kind=?1,text=?2,search=?3,payload=NULL,hash=?4,pastes=CASE WHEN hash=?4 THEN pastes ELSE 0 END,plain_pastes=CASE WHEN hash=?4 THEN plain_pastes ELSE 0 END WHERE id=?5 AND kind IN('text','link','email')",params![crate::clip::detect(text),text,search_text(text),content_hash(crate::clip::detect(text),text.as_bytes()),id])?;
         tx.execute("DELETE FROM formats WHERE clip_id=?1", [id])?;
         tx.commit()
     }

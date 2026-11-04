@@ -25,6 +25,7 @@ pub enum Event {
     PasteSent {
         id: i64,
         hash: Vec<u8>,
+        plain: bool,
     },
     ImageLocationChanged,
     ClipboardChanged,

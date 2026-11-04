@@ -11,7 +11,7 @@ mod cases {
         let id = s.record(&c, false, false).unwrap().unwrap();
         s.record(&c, false, false).unwrap();
         s.pin(id).unwrap();
-        s.db.execute_batch("ALTER TABLE clips DROP COLUMN pastes; PRAGMA user_version=3;")
+        s.db.execute_batch("ALTER TABLE clips DROP COLUMN pastes; ALTER TABLE clips DROP COLUMN plain_pastes; ALTER TABLE clips DROP COLUMN file_kinds; PRAGMA user_version=3;")
             .unwrap();
         let migrated = Store::from_connection(s.db, 10, 16).unwrap();
         let saved = migrated.list("").unwrap().remove(0);
@@ -22,6 +22,66 @@ mod cases {
         assert_eq!(saved.text, c.text);
     }
     #[test]
+    fn v4_migration_keeps_paste_counts_as_normal_and_adds_plain_and_kinds() {
+        let mut s = store(10);
+        let c = clip("migrated paste count");
+        let hash = content_hash(&c.kind, &c.payload);
+        let id = s.record(&c, false, false).unwrap().unwrap();
+        s.mark_pasted(id, &hash, false).unwrap();
+        s.mark_pasted(id, &hash, false).unwrap();
+        s.db.execute_batch(
+            "ALTER TABLE clips DROP COLUMN plain_pastes; ALTER TABLE clips DROP COLUMN file_kinds;
+            PRAGMA user_version=4;",
+        )
+        .unwrap();
+        let mut s = Store::from_connection(s.db, 10, 16).unwrap();
+        assert_eq!(
+            s.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            5
+        );
+        let saved = s.list("").unwrap().remove(0);
+        assert_eq!((saved.id, saved.pastes, saved.plain_pastes), (id, 2, 0));
+        assert_eq!(saved.file_kinds, "");
+        s.mark_pasted(id, &hash, true).unwrap();
+        let saved = s.list("").unwrap().remove(0);
+        assert_eq!((saved.pastes, saved.plain_pastes), (2, 1));
+    }
+    #[test]
+    fn plain_and_normal_pastes_count_separately_and_reset_on_changed_edit() {
+        let mut s = store(10);
+        let c = clip("two formats");
+        let hash = content_hash(&c.kind, &c.payload);
+        let id = s.record(&c, false, false).unwrap().unwrap();
+        s.mark_pasted(id, &hash, true).unwrap();
+        s.mark_pasted(id, &hash, true).unwrap();
+        s.mark_pasted(id, &hash, false).unwrap();
+        let saved = s.list("").unwrap().remove(0);
+        assert_eq!((saved.pastes, saved.plain_pastes), (1, 2));
+        s.edit(id, "two formats").unwrap();
+        assert_eq!(s.list("").unwrap()[0].plain_pastes, 2);
+        s.edit(id, "changed").unwrap();
+        let saved = s.list("").unwrap().remove(0);
+        assert_eq!((saved.pastes, saved.plain_pastes), (0, 0));
+    }
+    #[test]
+    fn file_lists_keep_full_text_and_kinds() {
+        let mut s = store(10);
+        let mut c = clip("");
+        c.kind = "files".into();
+        let paths: Vec<String> = (0..60)
+            .map(|i| format!(r"C:\fixtures\file-{i:03}.png"))
+            .collect();
+        c.text = paths.join("\n");
+        c.payload = c.text.as_bytes().to_vec();
+        c.file_kinds = "i".repeat(60);
+        s.record(&c, false, false).unwrap();
+        let saved = s.list("").unwrap().remove(0);
+        assert!(c.text.len() > 512);
+        assert_eq!(saved.text, c.text);
+        assert_eq!((saved.file_count, saved.file_kinds.len()), (60, 60));
+    }
+    #[test]
     fn paste_counts_persist_and_stale_completions_do_not_mark_new_content() {
         let path =
             std::env::temp_dir().join(format!("clipdeck-paste-count-{}.db", std::process::id()));
@@ -29,8 +89,8 @@ mod cases {
         let c = clip("first");
         let hash = content_hash(&c.kind, &c.payload);
         let id = s.record(&c, false, false).unwrap().unwrap();
-        s.mark_pasted(id, &hash).unwrap();
-        s.mark_pasted(id, &hash).unwrap();
+        s.mark_pasted(id, &hash, false).unwrap();
+        s.mark_pasted(id, &hash, false).unwrap();
         s.record(&c, false, false).unwrap();
         let saved = s.list("").unwrap().remove(0);
         assert_eq!((saved.copies, saved.pastes), (2, 2));
@@ -40,13 +100,13 @@ mod cases {
         s.edit(id, "first").unwrap();
         assert_eq!(s.list("").unwrap()[0].pastes, 2);
         s.edit(id, "edited").unwrap();
-        s.mark_pasted(id, &hash).unwrap();
+        s.mark_pasted(id, &hash, false).unwrap();
         assert_eq!(s.list("").unwrap()[0].pastes, 0);
         s.delete(id).unwrap();
         let new = clip("replacement");
         let new_id = s.record(&new, false, false).unwrap().unwrap();
         assert_eq!(new_id, id);
-        s.mark_pasted(id, &hash).unwrap();
+        s.mark_pasted(id, &hash, false).unwrap();
         assert_eq!(s.list("").unwrap()[0].pastes, 0);
         drop(s);
         std::fs::remove_file(path).unwrap();
@@ -145,7 +205,7 @@ mod cases {
         assert_eq!(
             s.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            4
+            5
         );
         assert!(
             s.db.query_row(
@@ -260,7 +320,7 @@ mod cases {
         c.kind = "files".into();
         s.record(&c, false, false).unwrap();
         let loaded = s.list("").unwrap().remove(0);
-        assert_eq!(loaded.text.len(), 512);
+        assert_eq!(loaded.text, c.text);
         assert!(loaded.meta().starts_with("2 files"));
         s.delete(loaded.id).unwrap();
         c.text = "one".into();
@@ -276,7 +336,7 @@ mod cases {
         assert_eq!(
             s.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            4
+            5
         );
         s.db.pragma_update(None, "user_version", 99).unwrap();
         assert!(migrate(&mut s.db).is_err());

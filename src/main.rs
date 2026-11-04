@@ -111,8 +111,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             cx.refresh_windows();
                         }
                         platform::Event::ClipboardChanged => cx.refresh_windows(),
-                        platform::Event::PasteSent { id, hash } => {
-                            if let Err(error) = store.borrow_mut().mark_pasted(id, &hash) {
+                        platform::Event::PasteSent { id, hash, plain } => {
+                            if let Err(error) = store.borrow_mut().mark_pasted(id, &hash, plain) {
                                 eprintln!("Store paste: {error}");
                             }
                             if let Some(view) = &view {

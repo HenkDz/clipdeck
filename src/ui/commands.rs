@@ -161,6 +161,7 @@ impl Popup {
                                 Ok(()) => platform::paste_sent(
                                     clip.id,
                                     crate::store::content_hash(&clip.kind, &clip.payload),
+                                    plain,
                                 ),
                                 Err(error) => eprintln!("Paste: {error}"),
                             }

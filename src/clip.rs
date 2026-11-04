@@ -10,6 +10,8 @@ pub struct Format {
 pub struct Clip {
     pub copies: i64,
     pub pastes: i64,
+    pub plain_pastes: i64,
+    pub file_kinds: String,
     pub file_path: String,
     pub screenshot_title: String,
     pub source_exe: String,
@@ -62,6 +64,8 @@ impl Clip {
         Self {
             copies: 1,
             pastes: 0,
+            plain_pastes: 0,
+            file_kinds: String::new(),
             file_path: String::new(),
             screenshot_title: String::new(),
             source_exe: String::new(),
