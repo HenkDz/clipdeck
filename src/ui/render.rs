@@ -181,6 +181,7 @@ impl Render for Popup {
                     .px_3()
                     .py_1()
                     .bg(cx.theme().accent)
+                    .text_color(cx.theme().accent_foreground)
                     .text_sm()
                     .child("Recording paused · resume from the tray")
             }))

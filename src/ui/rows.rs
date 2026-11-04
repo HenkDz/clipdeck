@@ -62,6 +62,7 @@ impl Popup {
                 .items_center()
                 .justify_center()
                 .bg(cx.theme().accent)
+                .text_color(cx.theme().accent_foreground)
                 .child(icon(&clip.kind))
                 .into_any_element()
         };

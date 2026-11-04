@@ -22,6 +22,23 @@ pub fn is_today(timestamp: i64) -> bool {
         (now.wYear, now.wMonth, now.wDay) == (local.wYear, local.wMonth, local.wDay)
     }
 }
+pub fn stamp(timestamp: i64) -> Result<String, String> {
+    let ticks = (timestamp.max(0) as u64 + 11_644_473_600).saturating_mul(10_000_000);
+    let file = FILETIME {
+        dwLowDateTime: ticks as u32,
+        dwHighDateTime: (ticks >> 32) as u32,
+    };
+    let mut utc = SYSTEMTIME::default();
+    let mut local = SYSTEMTIME::default();
+    unsafe {
+        FileTimeToSystemTime(&file, &mut utc).map_err(|e| e.to_string())?;
+        SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).map_err(|e| e.to_string())?;
+    }
+    Ok(format!(
+        "{:04}-{:02}-{:02}_{:02}-{:02}-{:02}",
+        local.wYear, local.wMonth, local.wDay, local.wHour, local.wMinute, local.wSecond
+    ))
+}
 #[cfg(test)]
 mod tests {
     #[test]

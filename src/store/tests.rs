@@ -5,6 +5,30 @@ mod cases {
         Store::from_connection(Connection::open_in_memory().unwrap(), n, 16).unwrap()
     }
     #[test]
+    fn v2_migration_failure_rolls_back_columns_and_image_formats() {
+        let mut db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE clips(id INTEGER PRIMARY KEY,kind TEXT,file_path TEXT);
+            CREATE TABLE formats(clip_id INTEGER,name TEXT,data BLOB);
+            INSERT INTO clips VALUES(42,'image','original.png');
+            INSERT INTO formats VALUES(42,'CF_DIB',X'010203');
+            PRAGMA user_version=2;",
+        )
+        .unwrap();
+        assert!(migrate(&mut db).is_err());
+        assert_eq!(
+            db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert!(db.prepare("SELECT copies FROM clips").is_err());
+        assert_eq!(
+            db.query_row("SELECT data FROM formats", [], |r| r.get::<_, Vec<u8>>(0))
+                .unwrap(),
+            [1, 2, 3]
+        );
+    }
+    #[test]
     fn v2_images_migrate_without_bitmap_blobs_and_copy_counts_persist() {
         let path =
             std::env::temp_dir().join(format!("clipdeck-v2-migration-{}.db", std::process::id()));

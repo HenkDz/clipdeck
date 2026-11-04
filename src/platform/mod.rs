@@ -7,6 +7,7 @@ mod focus;
 mod foreground;
 mod image;
 mod instance;
+pub mod locations;
 mod placement;
 mod source;
 mod time;
@@ -20,6 +21,7 @@ pub use instance::Instance;
 pub use tray::{open_external, open_settings};
 
 pub enum Event {
+    ImageLocationChanged,
     ClipboardChanged,
     Clip {
         clip: Box<crate::clip::Clip>,

@@ -52,6 +52,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let manager = GlobalHotKeyManager::new()?;
     manager.register(config.hotkey.parse()?)?;
     let hotkey_down = AtomicBool::new(false);
+    let source_sender = sender.clone();
     GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
         if opens_popup(event.state, &hotkey_down) {
             let _ = sender.send_blocking(platform::Event::Open(platform::Target::capture()));
@@ -74,6 +75,28 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 match store.borrow_mut().record(&clip, own_write, false) {
                                     Ok(Some(id)) => {
                                         platform::set_current(id, clip.sequence);
+                                        if clip.kind == "image" {
+                                            let mut clip = clip.clone();
+                                            clip.id = id;
+                                            let sender = source_sender.clone();
+                                            std::thread::spawn(move || {
+                                                std::thread::sleep(std::time::Duration::from_secs(
+                                                    3,
+                                                ));
+                                                if let Err(error) =
+                                                    platform::locations::resolve_image(&clip, false)
+                                                {
+                                                    let _ = sender.send_blocking(
+                                                        platform::Event::Error(format!(
+                                                            "Screenshot location: {error}"
+                                                        )),
+                                                    );
+                                                }
+                                                let _ = sender.send_blocking(
+                                                    platform::Event::ImageLocationChanged,
+                                                );
+                                            });
+                                        }
                                     }
                                     Ok(None) => {}
                                     Err(error) => eprintln!("Store capture: {error}"),
@@ -87,6 +110,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             cx.refresh_windows();
                         }
                         platform::Event::ClipboardChanged => cx.refresh_windows(),
+                        platform::Event::ImageLocationChanged => {
+                            if let Some(view) = &view {
+                                view.update(cx, |v, cx| v.reload(cx));
+                            }
+                        }
                         platform::Event::Quit => cx.quit(),
                         platform::Event::Settings => {
                             if let Ok(dir) = config::directory()

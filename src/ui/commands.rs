@@ -60,7 +60,7 @@ impl Popup {
                                     Ok(preview) => this.preview = preview,
                                     Err(error) => this.preview = Some(error),
                                 }
-                                cx.notify();
+                                this.reload(cx);
                             }
                         });
                     })
