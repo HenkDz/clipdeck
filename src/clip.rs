@@ -18,6 +18,7 @@ pub struct Clip {
     pub created: i64,
     pub updated: i64,
     pub pinned: bool,
+    pub file_count: usize,
 }
 
 pub fn now() -> i64 {
@@ -63,6 +64,7 @@ impl Clip {
             created: now(),
             updated: now(),
             pinned: false,
+            file_count: 0,
         }
     }
     pub fn is_text(&self) -> bool {
@@ -90,7 +92,15 @@ impl Clip {
         };
         let prefix = match self.kind.as_str() {
             "image" => format!("{} · ", self.text),
-            "files" => format!("{} files · ", self.text.lines().count()),
+            "files" => format!(
+                "{} {} · ",
+                self.file_count,
+                if self.file_count == 1 {
+                    "file"
+                } else {
+                    "files"
+                }
+            ),
             _ => String::new(),
         };
         format!("{prefix}{} · {age}", self.source)

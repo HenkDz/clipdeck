@@ -47,6 +47,10 @@ impl Popup {
                     if !clip.is_text() {
                         return Ok(());
                     }
+                    self.store
+                        .borrow()
+                        .hydrate(&mut clip)
+                        .map_err(|e| e.to_string())?;
                     let input = cx.new(|cx| TextareaState::new(window, cx).rows(10));
                     input.update(cx, |s, cx| {
                         s.set_value(clip.text, window, cx);
@@ -74,6 +78,10 @@ impl Popup {
                 }
                 Command::Open => {
                     if clip.kind == "link" {
+                        self.store
+                            .borrow()
+                            .hydrate(&mut clip)
+                            .map_err(|e| e.to_string())?;
                         platform::open_external(clip.text.trim())?;
                     }
                 }

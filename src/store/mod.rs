@@ -1,49 +1,124 @@
 mod tests;
 use crate::clip::{Clip, Format};
 use rusqlite::{Connection, Result, params};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 
 pub struct Store {
     db: Connection,
     limit: usize,
     pub fts: bool,
+    max_clip_bytes: usize,
+}
+
+const SEARCH_BYTES: usize = 64 * 1024;
+
+fn search_text(text: &str) -> String {
+    fn prefix(s: &str) -> &str {
+        let mut end = s.len().min(SEARCH_BYTES);
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        &s[..end]
+    }
+    prefix(&prefix(text).to_lowercase()).to_owned()
+}
+
+fn content_hash(kind: &str, payload: &[u8]) -> Vec<u8> {
+    let mut hash = Sha256::new();
+    hash.update(kind.as_bytes());
+    hash.update([0]);
+    hash.update(payload);
+    hash.finalize().to_vec()
 }
 
 pub fn migrate(db: &mut Connection) -> Result<bool> {
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version > 1 {
+    if version > 2 {
         return Err(rusqlite::Error::InvalidQuery);
     }
-    let tx = db.transaction()?;
-    tx.execute_batch("CREATE TABLE IF NOT EXISTS clips(
-        id INTEGER PRIMARY KEY, kind TEXT NOT NULL, text TEXT NOT NULL, search TEXT NOT NULL,
-        payload BLOB NOT NULL, thumbnail BLOB NOT NULL, source TEXT NOT NULL,
-        created INTEGER NOT NULL, updated INTEGER NOT NULL, rank INTEGER NOT NULL,
-        pinned INTEGER NOT NULL DEFAULT 0, UNIQUE(kind,payload));
-        CREATE TABLE IF NOT EXISTS formats(clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,data BLOB NOT NULL, PRIMARY KEY(clip_id,name));
-        CREATE INDEX IF NOT EXISTS clips_order ON clips(pinned DESC,rank DESC);
-        PRAGMA user_version=1;")?;
-    let fts = tx.execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(search,content='clips',content_rowid='id',tokenize='trigram');
-        CREATE TRIGGER IF NOT EXISTS clips_ai AFTER INSERT ON clips BEGIN INSERT INTO clips_fts(rowid,search) VALUES(new.id,new.search); END;
-        CREATE TRIGGER IF NOT EXISTS clips_ad AFTER DELETE ON clips BEGIN INSERT INTO clips_fts(clips_fts,rowid,search) VALUES('delete',old.id,old.search); END;
-        CREATE TRIGGER IF NOT EXISTS clips_au AFTER UPDATE ON clips BEGIN INSERT INTO clips_fts(clips_fts,rowid,search) VALUES('delete',old.id,old.search); INSERT INTO clips_fts(rowid,search) VALUES(new.id,new.search); END;").is_ok();
-    if fts {
-        tx.execute_batch("INSERT INTO clips_fts(clips_fts) VALUES('rebuild');")?;
+    // Preserve formats referencing stable clip IDs while replacing the parent table.
+    db.pragma_update(None, "foreign_keys", false)?;
+    let result: Result<bool> = (|| {
+        let tx = db.transaction()?;
+        if version < 2 {
+            tx.execute_batch("DROP TRIGGER IF EXISTS clips_ai; DROP TRIGGER IF EXISTS clips_ad;
+                DROP TRIGGER IF EXISTS clips_au; DROP TABLE IF EXISTS clips_fts;
+                CREATE TABLE clips_v2(
+                id INTEGER PRIMARY KEY, kind TEXT NOT NULL, text TEXT NOT NULL, search TEXT NOT NULL,
+                payload BLOB, hash BLOB NOT NULL, thumbnail BLOB NOT NULL, source TEXT NOT NULL,
+                created INTEGER NOT NULL, updated INTEGER NOT NULL, rank INTEGER NOT NULL,
+                pinned INTEGER NOT NULL DEFAULT 0, UNIQUE(kind,hash));")?;
+            if version == 1 {
+                let mut stmt = tx.prepare("SELECT id,kind,text,payload,thumbnail,source,created,updated,rank,pinned FROM clips")?;
+                let mut rows = stmt.query([])?;
+                while let Some(row) = rows.next()? {
+                    let kind: String = row.get(1)?;
+                    let text: String = row.get(2)?;
+                    let payload: Vec<u8> = row.get(3)?;
+                    tx.execute(
+                        "INSERT INTO clips_v2 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                        params![
+                            row.get::<_, i64>(0)?,
+                            kind,
+                            text,
+                            search_text(&text),
+                            (payload != text.as_bytes()).then_some(&payload),
+                            content_hash(&kind, &payload),
+                            row.get::<_, Vec<u8>>(4)?,
+                            row.get::<_, String>(5)?,
+                            row.get::<_, i64>(6)?,
+                            row.get::<_, i64>(7)?,
+                            row.get::<_, i64>(8)?,
+                            row.get::<_, bool>(9)?
+                        ],
+                    )?;
+                }
+                tx.execute_batch("DROP TABLE clips;")?;
+            }
+            tx.execute_batch("ALTER TABLE clips_v2 RENAME TO clips;
+                CREATE TABLE IF NOT EXISTS formats(clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,data BLOB NOT NULL, PRIMARY KEY(clip_id,name));
+                CREATE INDEX clips_order ON clips(pinned DESC,rank DESC);
+                PRAGMA user_version=2;")?;
+        }
+        let had_fts: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='clips_fts')",
+            [],
+            |r| r.get(0),
+        )?;
+        let fts = tx.execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(search,content='clips',content_rowid='id',tokenize='trigram');
+            CREATE TRIGGER IF NOT EXISTS clips_ai AFTER INSERT ON clips BEGIN INSERT INTO clips_fts(rowid,search) VALUES(new.id,new.search); END;
+            CREATE TRIGGER IF NOT EXISTS clips_ad AFTER DELETE ON clips BEGIN INSERT INTO clips_fts(clips_fts,rowid,search) VALUES('delete',old.id,old.search); END;
+            CREATE TRIGGER IF NOT EXISTS clips_au AFTER UPDATE OF search ON clips BEGIN INSERT INTO clips_fts(clips_fts,rowid,search) VALUES('delete',old.id,old.search); INSERT INTO clips_fts(rowid,search) VALUES(new.id,new.search); END;").is_ok();
+        if fts && !had_fts {
+            tx.execute_batch("INSERT INTO clips_fts(clips_fts) VALUES('rebuild');")?;
+        }
+        tx.commit()?;
+        Ok(fts)
+    })();
+    db.pragma_update(None, "foreign_keys", true)?;
+    let fts = result?;
+    if version == 1 {
+        db.execute_batch("VACUUM;")?;
     }
-    tx.commit()?;
     Ok(fts)
 }
 
 impl Store {
-    pub fn open(path: &Path, limit: usize) -> Result<Self> {
-        Self::from_connection(Connection::open(path)?, limit)
+    pub fn open(path: &Path, limit: usize, max_clip_mb: usize) -> Result<Self> {
+        Self::from_connection(Connection::open(path)?, limit, max_clip_mb)
     }
-    fn from_connection(mut db: Connection, limit: usize) -> Result<Self> {
+    fn from_connection(mut db: Connection, limit: usize, max_clip_mb: usize) -> Result<Self> {
         db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;")?;
         db.busy_timeout(std::time::Duration::from_secs(2))?;
         let fts = migrate(&mut db)?;
-        let mut store = Self { db, limit, fts };
+        let mut store = Self {
+            db,
+            limit,
+            fts,
+            max_clip_bytes: max_clip_mb.saturating_mul(1024 * 1024),
+        };
         store.retain()?;
         Ok(store)
     }
@@ -52,14 +127,32 @@ impl Store {
         if own_write || excluded || clip.payload.is_empty() {
             return Ok(());
         }
+        let size = clip
+            .text
+            .len()
+            .saturating_add(if clip.payload == clip.text.as_bytes() {
+                0
+            } else {
+                clip.payload.len()
+            })
+            .saturating_add(clip.thumbnail.len())
+            .saturating_add(clip.formats.iter().map(|f| f.data.len()).sum::<usize>());
+        if size > self.max_clip_bytes {
+            eprintln!(
+                "Skipping clip: {size} bytes exceeds max_clip_mb ({} bytes)",
+                self.max_clip_bytes
+            );
+            return Ok(());
+        }
+        let hash = content_hash(&clip.kind, &clip.payload);
         let tx = self.db.transaction()?;
-        tx.execute("INSERT INTO clips(kind,text,search,payload,thumbnail,source,created,updated,rank,pinned)
-            VALUES(?1,?2,?3,?4,?5,?6,?7,?8,(SELECT COALESCE(MAX(rank),0)+1 FROM clips),0)
-            ON CONFLICT(kind,payload) DO UPDATE SET text=excluded.text,search=excluded.search,thumbnail=excluded.thumbnail,source=excluded.source,updated=excluded.updated,rank=(SELECT COALESCE(MAX(rank),0)+1 FROM clips)",
-            params![clip.kind,clip.text,clip.text.to_lowercase(),clip.payload,clip.thumbnail,clip.source,clip.created,clip.updated])?;
+        tx.execute("INSERT INTO clips(kind,text,search,payload,hash,thumbnail,source,created,updated,rank,pinned)
+            VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT COALESCE(MAX(rank),0)+1 FROM clips),0)
+            ON CONFLICT(kind,hash) DO UPDATE SET text=excluded.text,payload=excluded.payload,search=excluded.search,thumbnail=excluded.thumbnail,source=excluded.source,updated=excluded.updated,rank=(SELECT COALESCE(MAX(rank),0)+1 FROM clips)",
+            params![clip.kind,clip.text,search_text(&clip.text),(clip.payload != clip.text.as_bytes()).then_some(&clip.payload),hash,clip.thumbnail,clip.source,clip.created,clip.updated])?;
         let id: i64 = tx.query_row(
-            "SELECT id FROM clips WHERE kind=?1 AND payload=?2",
-            params![clip.kind, clip.payload],
+            "SELECT id FROM clips WHERE kind=?1 AND hash=?2",
+            params![clip.kind, hash],
             |r| r.get(0),
         )?;
         tx.execute("DELETE FROM formats WHERE clip_id=?1", [id])?;
@@ -82,11 +175,11 @@ impl Store {
                 .replace('_', "\\_")
         );
         let sql = if self.fts && !q.contains(['%', '_', '\\']) {
-            "SELECT id,kind,text,X'',thumbnail,source,created,updated,pinned FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1) ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1) ORDER BY pinned DESC,rank DESC"
         } else if self.fts {
-            "SELECT id,kind,text,X'',thumbnail,source,created,updated,pinned FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1 ESCAPE '\\') ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1 ESCAPE '\\') ORDER BY pinned DESC,rank DESC"
         } else {
-            "SELECT id,kind,text,X'',thumbnail,source,created,updated,pinned FROM clips WHERE search LIKE ?1 ESCAPE '\\' ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END FROM clips WHERE search LIKE ?1 ESCAPE '\\' ORDER BY pinned DESC,rank DESC"
         };
         self.db
             .prepare(sql)?
@@ -102,16 +195,17 @@ impl Store {
                     updated: r.get(7)?,
                     pinned: r.get(8)?,
                     formats: vec![],
+                    file_count: r.get::<_, i64>(9)? as usize,
                 })
             })?
             .collect()
     }
     pub fn hydrate(&self, clip: &mut Clip) -> Result<()> {
-        clip.payload =
-            self.db
-                .query_row("SELECT payload FROM clips WHERE id=?1", [clip.id], |r| {
-                    r.get(0)
-                })?;
+        (clip.text, clip.payload) = self.db.query_row(
+            "SELECT text,COALESCE(payload,CAST(text AS BLOB)) FROM clips WHERE id=?1",
+            [clip.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
         clip.formats = self
             .db
             .prepare("SELECT name,data FROM formats WHERE clip_id=?1")?
@@ -138,8 +232,13 @@ impl Store {
         Ok(())
     }
     pub fn edit(&mut self, id: i64, text: &str) -> Result<()> {
+        if text.len() > self.max_clip_bytes {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Edit exceeds max_clip_mb".into(),
+            ));
+        }
         let tx = self.db.transaction()?;
-        tx.execute("UPDATE clips SET kind=?1,text=?2,search=?3,payload=?4 WHERE id=?5 AND kind IN('text','link','email')",params![crate::clip::detect(text),text,text.to_lowercase(),text.as_bytes(),id])?;
+        tx.execute("UPDATE clips SET kind=?1,text=?2,search=?3,payload=NULL,hash=?4 WHERE id=?5 AND kind IN('text','link','email')",params![crate::clip::detect(text),text,search_text(text),content_hash(crate::clip::detect(text),text.as_bytes()),id])?;
         tx.execute("DELETE FROM formats WHERE clip_id=?1", [id])?;
         tx.commit()
     }

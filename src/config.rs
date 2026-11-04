@@ -5,6 +5,7 @@ use std::path::PathBuf;
 pub struct Config {
     pub hotkey: String,
     pub history_size: usize,
+    pub max_clip_mb: usize,
     pub paste_delay_ms: u64,
 }
 impl Default for Config {
@@ -12,6 +13,7 @@ impl Default for Config {
         Self {
             hotkey: "Ctrl+Shift+V".into(),
             history_size: 1000,
+            max_clip_mb: 16,
             paste_delay_ms: 80,
         }
     }
@@ -45,6 +47,13 @@ impl Config {
                 eprintln!("Invalid history_size; using default");
             }
         }
+        if let Some(v) = value.get("max_clip_mb") {
+            if let Some(n) = v.as_integer().filter(|n| (1..=128).contains(n)) {
+                config.max_clip_mb = n as usize;
+            } else {
+                eprintln!("Invalid max_clip_mb; using default");
+            }
+        }
         if let Some(v) = value.get("paste_delay_ms") {
             if let Some(n) = v.as_integer().filter(|n| (0..=5000).contains(n)) {
                 config.paste_delay_ms = n as u64;
@@ -61,7 +70,7 @@ impl Config {
         if !path.exists() {
             std::fs::write(
                 &path,
-                "hotkey = \"Ctrl+Shift+V\"\nhistory_size = 1000\npaste_delay_ms = 80\n",
+                "hotkey = \"Ctrl+Shift+V\"\nhistory_size = 1000\nmax_clip_mb = 16\npaste_delay_ms = 80\n",
             )?;
         }
         match std::fs::read_to_string(path) {
@@ -78,6 +87,13 @@ mod tests {
     use super::*;
     #[test]
     fn fallback_per_field() {
+        assert_eq!(Config::parse("max_clip_mb=2").max_clip_mb, 2);
+        for value in ["0", "-1", "129", "'oops'"] {
+            assert_eq!(
+                Config::parse(&format!("max_clip_mb={value}")).max_clip_mb,
+                16
+            );
+        }
         let c = Config::parse("hotkey = 'invalid'\nhistory_size = -4\npaste_delay_ms = 125");
         assert_eq!(c.hotkey, Config::default().hotkey);
         assert_eq!(c.history_size, 1000);

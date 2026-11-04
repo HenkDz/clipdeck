@@ -30,6 +30,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut store = store::Store::open(
         &config::directory()?.join("history.db"),
         config.history_size,
+        config.max_clip_mb,
     )?;
     if std::env::args().any(|arg| arg == "--debug-seed") {
         // Explicit debug fixture bypasses clipboard capture; it contains only generated text.

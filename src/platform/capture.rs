@@ -26,6 +26,7 @@ pub fn read() -> Result<Option<Clip>> {
                 files.push(String::from_utf16_lossy(&name[..len as usize]));
             }
             clip.kind = "files".into();
+            clip.file_count = count as usize;
             clip.text = files.join("\n");
             clip.payload = clip.text.as_bytes().to_vec();
             clip.formats.push(Format {

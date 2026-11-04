@@ -652,6 +652,7 @@ dependencies = [
  "image",
  "raw-window-handle",
  "rusqlite",
+ "sha2",
  "toml 1.1.8+spec-1.1.0",
  "tray-icon",
  "windows 0.61.3",
