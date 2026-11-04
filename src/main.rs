@@ -2,6 +2,7 @@
 
 mod clip;
 mod config;
+mod files;
 mod platform;
 mod store;
 mod ui;

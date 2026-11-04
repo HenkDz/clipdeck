@@ -1,9 +1,40 @@
 use super::clipboard::{bytes, format};
-use crate::clip::{Clip, Format};
+use crate::{
+    clip::{Clip, Format},
+    files::Route,
+};
 use windows::{
     Win32::{System::DataExchange::*, UI::Shell::*},
     core::Result,
 };
+
+/// The CF_HDROP file list, or `Err(())` when it exceeds the capture limits.
+unsafe fn drop_files() -> std::result::Result<Option<Vec<String>>, ()> {
+    unsafe {
+        if IsClipboardFormatAvailable(15).is_err() {
+            return Ok(None);
+        }
+        let Ok(handle) = GetClipboardData(15) else {
+            return Ok(None);
+        };
+        let drop = HDROP(handle.0);
+        let count = DragQueryFileW(drop, u32::MAX, None);
+        if count > 10000 {
+            return Err(());
+        }
+        let mut files = vec![];
+        for index in 0..count {
+            let len = DragQueryFileW(drop, index, None);
+            if len > 32768 {
+                return Err(());
+            }
+            let mut name = vec![0u16; len as usize + 1];
+            DragQueryFileW(drop, index, Some(&mut name));
+            files.push(String::from_utf16_lossy(&name[..len as usize]));
+        }
+        Ok(Some(files))
+    }
+}
 
 pub fn read() -> Result<Option<Clip>> {
     unsafe {
@@ -12,32 +43,25 @@ pub fn read() -> Result<Option<Clip>> {
         let has_image = [png_format, 17, 8]
             .into_iter()
             .any(|id| IsClipboardFormatAvailable(id).is_ok());
-        if IsClipboardFormatAvailable(15).is_ok() && !has_image {
-            let handle = GetClipboardData(15)?;
-            let drop = HDROP(handle.0);
-            let count = DragQueryFileW(drop, u32::MAX, None);
-            if count > 10000 {
-                return Ok(None);
-            }
-            let mut files = vec![];
-            for index in 0..count {
-                let len = DragQueryFileW(drop, index, None);
-                if len > 32768 {
-                    return Ok(None);
-                }
-                let mut name = vec![0u16; len as usize + 1];
-                DragQueryFileW(drop, index, Some(&mut name));
-                files.push(String::from_utf16_lossy(&name[..len as usize]));
-            }
+        let Ok(files) = drop_files() else {
+            return Ok(None);
+        };
+        let route = crate::files::route(
+            files.as_deref(),
+            has_image,
+            IsClipboardFormatAvailable(13).is_ok(),
+        );
+        if route == Route::Files {
+            let files = files.unwrap_or_default();
             clip.kind = "files".into();
-            clip.file_count = count as usize;
+            clip.file_count = files.len();
             clip.text = files.join("\n");
             clip.payload = clip.text.as_bytes().to_vec();
             clip.formats.push(Format {
                 name: "CF_HDROP".into(),
                 data: bytes(15)?,
             });
-        } else if has_image {
+        } else if route == Route::Image {
             let (png, thumbnail, dimensions) = if IsClipboardFormatAvailable(png_format).is_ok() {
                 let png = bytes(png_format)?;
                 let (thumbnail, dimensions) = super::image::png_metadata(&png).map_err(|e| {
@@ -58,12 +82,8 @@ pub fn read() -> Result<Option<Clip>> {
             clip.payload = png;
             clip.thumbnail = thumbnail;
             clip.text = dimensions;
-            if IsClipboardFormatAvailable(15).is_ok() {
-                let drop = HDROP(GetClipboardData(15)?.0);
-                let len = DragQueryFileW(drop, 0, None).min(32768);
-                let mut name = vec![0u16; len as usize + 1];
-                DragQueryFileW(drop, 0, Some(&mut name));
-                clip.file_path = String::from_utf16_lossy(&name[..len as usize]);
+            if let Some(file) = files.as_ref().and_then(|f| f.first()) {
+                clip.file_path = file.clone();
             } else {
                 let id = format("FileNameW")?;
                 if IsClipboardFormatAvailable(id).is_ok() {
@@ -78,7 +98,7 @@ pub fn read() -> Result<Option<Clip>> {
                     );
                 }
             }
-        } else if IsClipboardFormatAvailable(13).is_ok() {
+        } else if route == Route::Text {
             let data = bytes(13)?;
             let wide: Vec<u16> = data
                 .as_chunks::<2>()
