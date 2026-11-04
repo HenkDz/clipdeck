@@ -16,6 +16,7 @@ pub fn create(
     let open = MenuItem::with_id("open", "Open", true, None);
     let pause = CheckMenuItem::with_id("pause", "Pause recording", true, false, None);
     let settings = MenuItem::with_id("settings", "Settings", true, None);
+    let updates = MenuItem::with_id("updates", "Check for updates", true, None);
     let quit = MenuItem::with_id("quit", "Quit", true, None);
     // Left click opens the popup; right click shows the menu.
     let click_sender = sender.clone();
@@ -35,6 +36,7 @@ pub fn create(
         &open,
         &pause,
         &settings,
+        &updates,
         &PredefinedMenuItem::separator(),
         &quit,
     ])?;
@@ -46,6 +48,7 @@ pub fn create(
                 Event::Pause
             }
             "settings" => Event::Settings,
+            "updates" => Event::Update(crate::update::Action::Check(true)),
             "quit" => Event::Quit,
             _ => return,
         };

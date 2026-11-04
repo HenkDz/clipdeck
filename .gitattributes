@@ -1,0 +1,3 @@
+assets/*.bin -text
+assets/*.sig -text
+assets/update-test.toml -text

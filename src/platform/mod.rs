@@ -29,6 +29,8 @@ pub use instance::Instance;
 pub use tray::open_external;
 
 pub enum Event {
+    Update(crate::update::Action),
+    UpdateState(crate::update::State),
     PasteSent {
         id: i64,
         hash: Vec<u8>,
@@ -56,5 +58,6 @@ pub enum Event {
     Quit,
     Settings,
     ShowSettings,
+    ShowUpdates,
     Error(String),
 }

@@ -1,0 +1,6 @@
+format = 1
+version = "9.8.7"
+size = 65536
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+schema = 5
+notes = "Signature verification fixture; never offered as a release."

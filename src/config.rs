@@ -34,6 +34,7 @@ pub struct Config {
     pub width: u32,
     pub height: u32,
     pub keep_open: bool,
+    pub check_updates: bool,
     /// Last top-left corner in screen pixels, used while the popup is kept open.
     pub position: Option<(i32, i32)>,
 }
@@ -48,6 +49,7 @@ impl Default for Config {
             width: 480,
             height: 520,
             keep_open: false,
+            check_updates: false,
             position: None,
         }
     }
@@ -128,6 +130,9 @@ impl Config {
                 .filter(|n| (-100_000..=100_000).contains(n))
                 .map(|n| n as i32)
         };
+        if let Some(value) = value.get("check_updates").and_then(toml::Value::as_bool) {
+            config.check_updates = value;
+        }
         config.position = coordinate("x").zip(coordinate("y"));
         config
     }

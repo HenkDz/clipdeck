@@ -8,6 +8,7 @@ mod rows;
 mod selection;
 mod settings;
 mod theme;
+mod updates;
 mod views;
 mod widgets;
 pub use popup::{Hooks, Popup, SetHotkey};

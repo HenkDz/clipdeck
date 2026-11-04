@@ -475,7 +475,9 @@ impl Popup {
                 "Raise it if pastes land before the app is ready",
                 delay,
                 p,
-            ));
+            ))
+            .child(div().h(px(1.)).bg(p.hairline).mt(S1))
+            .child(self.updates_view(cx));
         div()
             .flex_1()
             .min_h_0()

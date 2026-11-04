@@ -145,6 +145,23 @@ impl Popup {
         match &self.view {
             View::List => div().into_any_element(),
             View::Settings(_) => self.settings_view(cx),
+            View::Updates => div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_col()
+                .child(self.bar("Updates".into(), None, vec![], cx))
+                .child(
+                    div()
+                        .id("updates-panel")
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .px(S4)
+                        .pb(S3)
+                        .child(self.updates_view(cx)),
+                )
+                .into_any_element(),
             View::Text { id, text } => {
                 let id = *id;
                 let clip = self.clips.iter().find(|c| c.id == id).cloned();

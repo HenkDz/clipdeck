@@ -24,6 +24,8 @@ pub type SetHotkey = Rc<dyn Fn(&str) -> Result<(), String>>;
 pub struct Hooks {
     pub paused: Arc<AtomicBool>,
     pub set_hotkey: SetHotkey,
+    pub updates: crate::update::Shared,
+    pub update_action: crate::update::SendAction,
 }
 
 pub(super) const FILTERS: [&str; 6] = ["All", "Links", "Images", "Text", "Files", "Pinned"];
@@ -66,6 +68,7 @@ pub(super) enum View {
         rows: Vec<(&'static str, String)>,
     },
     Settings(super::settings::Settings),
+    Updates,
 }
 
 pub(super) struct Gallery {
@@ -118,6 +121,8 @@ pub struct Popup {
     pub(super) menu: Option<Menu>,
     pub(super) paused: Arc<AtomicBool>,
     pub(super) set_hotkey: SetHotkey,
+    pub(super) updates: crate::update::Shared,
+    pub(super) update_action: crate::update::SendAction,
     /// A left press on a clip (and gallery file) that becomes a drag once the mouse moves.
     pub(super) press: Option<(i64, Option<usize>, Point<Pixels>)>,
     _subscriptions: Vec<Subscription>,
@@ -168,6 +173,8 @@ impl Popup {
             menu: None,
             paused: hooks.paused,
             set_hotkey: hooks.set_hotkey,
+            updates: hooks.updates,
+            update_action: hooks.update_action,
             press: None,
             _subscriptions: vec![change, activation, theme],
         };
@@ -363,7 +370,7 @@ impl Popup {
                 }
             }
             View::Settings(_) => self.settings_key(event, window, cx),
-            View::Details { .. } => {
+            View::Details { .. } | View::Updates => {
                 if key == "escape" {
                     self.back(window, cx);
                 }
@@ -485,7 +492,7 @@ impl Popup {
                 ("Esc", "back"),
             ],
             View::Edit { .. } => &[("Ctrl+S", "save"), ("Esc", "cancel")],
-            View::Details { .. } => &[("Esc", "back")],
+            View::Details { .. } | View::Updates => &[("Esc", "back")],
             View::Settings(s) if s.recording => &[("Esc", "cancel recording")],
             View::Settings(_) => &[("Esc", "back")],
         }

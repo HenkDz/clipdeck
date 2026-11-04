@@ -6,6 +6,7 @@ mod files;
 mod platform;
 mod store;
 mod ui;
+mod update;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use gpui::*;
 use std::{
@@ -17,6 +18,14 @@ use std::{
     },
 };
 fn main() {
+    match update::bootstrap() {
+        Ok(true) => return,
+        Err(error) => {
+            update::error_dialog(&error);
+            return;
+        }
+        Ok(false) => {}
+    }
     if let Err(error) = run() {
         eprintln!("Clipdeck: {error}");
         std::process::exit(1);
@@ -28,6 +37,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
     let config = config::Config::load()?;
+    let mut updates = update::Controller::new();
+    let update_sender = sender.clone();
+    update::schedule(sender.clone());
     let mut store = store::Store::open(
         &config::directory()?.join("history.db"),
         config.history_size,
@@ -87,6 +99,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .with_assets(gpui_kit_assets::AllAssets)
         .run(move |cx: &mut App| {
             gpui_component::init(cx);
+            // No clipboard events are consumed until the update startup handshake succeeds.
+            if let Err(error) = update::ready() {
+                eprintln!("Update startup: {error}");
+                cx.quit();
+                return;
+            }
+            if update::incoming() || std::env::args().any(|arg| arg == "--update-recovered") {
+                let _ = update_sender.send_blocking(platform::Event::Open(platform::last_app()));
+                let _ = update_sender.send_blocking(platform::Event::ShowUpdates);
+            }
             ui::sync_theme(None, cx);
             let store = Rc::new(RefCell::new(store));
             cx.spawn(async move |cx| {
@@ -95,6 +117,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let mut view: Option<Entity<ui::Popup>> = None;
                 while let Ok(event) = receiver.recv().await {
                     cx.update(|cx| match event {
+                        platform::Event::Update(action) => {
+                            updates.handle(action, &update_sender);
+                            if matches!(action, update::Action::Check(true)) {
+                                let _ = update_sender
+                                    .send_blocking(platform::Event::Open(platform::last_app()));
+                                let _ = update_sender.send_blocking(platform::Event::ShowUpdates);
+                            }
+                            cx.refresh_windows();
+                        }
+                        platform::Event::UpdateState(state) => {
+                            if matches!(state, update::State::Restarting) {
+                                cx.quit();
+                            }
+                            *updates.state.borrow_mut() = state;
+                            cx.refresh_windows();
+                        }
                         platform::Event::Clip { clip, own_write } => {
                             if !paused.load(Ordering::SeqCst) {
                                 match store.borrow_mut().record(&clip, own_write, false) {
@@ -188,10 +226,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 .send_blocking(platform::Event::Open(platform::last_app()));
                             let _ = settings_sender.send_blocking(platform::Event::ShowSettings);
                         }
-                        platform::Event::ShowSettings => {
+                        platform::Event::ShowSettings | platform::Event::ShowUpdates => {
                             if let (Some(handle), Some(view)) = (popup, view.as_ref()) {
                                 let _ = handle.update(cx, |_, window, cx| {
-                                    view.update(cx, |view, cx| view.open_settings(window, cx))
+                                    view.update(cx, |view, cx| {
+                                        if matches!(event, platform::Event::ShowUpdates) {
+                                            view.open_updates(window, cx)
+                                        } else {
+                                            view.open_settings(window, cx)
+                                        }
+                                    })
                                 });
                             }
                         }
@@ -233,6 +277,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                             ui::Hooks {
                                                 paused: paused.clone(),
                                                 set_hotkey: set_hotkey.clone(),
+                                                updates: updates.state.clone(),
+                                                update_action: {
+                                                    let sender = update_sender.clone();
+                                                    Rc::new(move |action| {
+                                                        let _ = sender.send_blocking(
+                                                            platform::Event::Update(action),
+                                                        );
+                                                    })
+                                                },
                                             },
                                             config.clone(),
                                             window,
