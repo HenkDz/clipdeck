@@ -38,6 +38,11 @@ fn changed() {
         let _ = sender.send_blocking(Event::ClipboardChanged);
     }
 }
+pub fn paste_sent(id: i64, hash: Vec<u8>) {
+    if let Some(sender) = EVENTS.get() {
+        let _ = sender.send_blocking(Event::PasteSent { id, hash });
+    }
+}
 thread_local! { static SENDER: RefCell<Option<async_channel::Sender<Event>>> = const { RefCell::new(None) }; }
 thread_local! { static PAUSED: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) }; }
 

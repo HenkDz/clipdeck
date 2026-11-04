@@ -5,6 +5,7 @@ use gpui_component::{ActiveTheme, kbd::Kbd};
 fn item(label: &str, view: WeakEntity<Popup>, id: i64, cmd: Command) -> PopupMenuItem {
     let key = match cmd {
         Command::Preview => Some("space"),
+        Command::Copy => Some("ctrl-c"),
         Command::Paste(false) => Some("enter"),
         Command::Paste(true) => Some("shift-enter"),
         Command::Pin => Some("ctrl-p"),
@@ -110,12 +111,7 @@ pub(super) fn build(
     menu.submenu("More", window, cx, move |sub, _, _| {
         sub.min_w(px(200.))
             .max_w(px(220.))
-            .item(item(
-                "Copy without pasting",
-                view.clone(),
-                id,
-                Command::Copy,
-            ))
+            .item(item("Copy to clipboard", view.clone(), id, Command::Copy))
             .item(item("Clip details", view.clone(), id, Command::Details))
     })
 }

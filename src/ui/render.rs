@@ -99,6 +99,11 @@ impl Render for Popup {
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .capture_key_down(cx.listener(Self::key))
+            .capture_action(
+                cx.listener(|this, _: &gpui_component::input::Copy, window, cx| {
+                    this.copy_selected_to_clipboard(window, cx);
+                }),
+            )
             .capture_action(cx.listener(
                 |this, _: &gpui_component::input::IndentInline, window, cx| {
                     this.cycle_filter(false, window, cx)

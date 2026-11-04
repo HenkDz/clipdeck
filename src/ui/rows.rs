@@ -108,17 +108,32 @@ impl Popup {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child(div().text_sm().truncate().child(if clip.kind == "image" {
-                        "Screenshot".into()
-                    } else {
-                        clip.text
-                            .lines()
-                            .next()
-                            .unwrap_or("")
-                            .chars()
-                            .take(180)
-                            .collect::<String>()
-                    }))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(div().flex_1().min_w_0().text_sm().truncate().child(
+                                if clip.kind == "image" {
+                                    "Screenshot".into()
+                                } else {
+                                    clip.text
+                                        .lines()
+                                        .next()
+                                        .unwrap_or("")
+                                        .chars()
+                                        .take(180)
+                                        .collect::<String>()
+                                },
+                            ))
+                            .children((clip.pastes > 0).then(|| {
+                                div()
+                                    .flex_none()
+                                    .text_xs()
+                                    .text_color(cx.theme().success)
+                                    .child(format!("✓ pasted {}×", clip.pastes))
+                            })),
+                    )
                     .child(
                         div()
                             .text_xs()

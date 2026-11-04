@@ -25,7 +25,7 @@ fn search_text(text: &str) -> String {
     prefix(&prefix(text).to_lowercase()).to_owned()
 }
 
-fn content_hash(kind: &str, payload: &[u8]) -> Vec<u8> {
+pub(crate) fn content_hash(kind: &str, payload: &[u8]) -> Vec<u8> {
     let mut hash = Sha256::new();
     hash.update(kind.as_bytes());
     hash.update([0]);
@@ -35,7 +35,7 @@ fn content_hash(kind: &str, payload: &[u8]) -> Vec<u8> {
 
 pub fn migrate(db: &mut Connection) -> Result<bool> {
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version > 3 {
+    if version > 4 {
         return Err(rusqlite::Error::InvalidQuery);
     }
     // Preserve formats referencing stable clip IDs while replacing the parent table.
@@ -92,6 +92,9 @@ pub fn migrate(db: &mut Connection) -> Result<bool> {
                 DELETE FROM formats WHERE clip_id IN(SELECT id FROM clips WHERE kind='image');
                 PRAGMA user_version=3;",
             )?;
+        }
+        if version < 4 {
+            tx.execute_batch("ALTER TABLE clips ADD COLUMN pastes INTEGER NOT NULL DEFAULT 0; PRAGMA user_version=4;")?;
         }
         let had_fts: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='clips_fts')",
@@ -192,17 +195,18 @@ impl Store {
                 .replace('_', "\\_")
         );
         let sql = if self.fts && !q.contains(['%', '_', '\\']) {
-            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1) ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1) ORDER BY pinned DESC,rank DESC"
         } else if self.fts {
-            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1 ESCAPE '\\') ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes FROM clips WHERE id IN (SELECT rowid FROM clips_fts WHERE search LIKE ?1 ESCAPE '\\') ORDER BY pinned DESC,rank DESC"
         } else {
-            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe FROM clips WHERE search LIKE ?1 ESCAPE '\\' ORDER BY pinned DESC,rank DESC"
+            "SELECT id,kind,substr(text,1,512),X'',thumbnail,source,created,updated,pinned,CASE WHEN kind='files' AND text<>'' THEN length(text)-length(replace(text,char(10),''))+1 ELSE 0 END,copies,file_path,screenshot_title,source_exe,pastes FROM clips WHERE search LIKE ?1 ESCAPE '\\' ORDER BY pinned DESC,rank DESC"
         };
         self.db
             .prepare(sql)?
             .query_map([pattern], |r| {
                 Ok(Clip {
                     copies: r.get(10)?,
+                    pastes: r.get(14)?,
                     file_path: r.get(11)?,
                     screenshot_title: r.get(12)?,
                     source_exe: r.get(13)?,
@@ -244,6 +248,14 @@ impl Store {
         self.db.execute("DELETE FROM clips WHERE id=?1", [id])?;
         Ok(())
     }
+    pub fn mark_pasted(&mut self, id: i64, hash: &[u8]) -> Result<()> {
+        // A delayed completion must not mark a different clip after edit/deletion/ID reuse.
+        self.db.execute(
+            "UPDATE clips SET pastes=pastes+1 WHERE id=?1 AND hash=?2",
+            params![id, hash],
+        )?;
+        Ok(())
+    }
     pub fn pin(&mut self, id: i64) -> Result<()> {
         self.db
             .execute("UPDATE clips SET pinned=NOT pinned WHERE id=?1", [id])?;
@@ -260,7 +272,7 @@ impl Store {
             ));
         }
         let tx = self.db.transaction()?;
-        tx.execute("UPDATE clips SET kind=?1,text=?2,search=?3,payload=NULL,hash=?4 WHERE id=?5 AND kind IN('text','link','email')",params![crate::clip::detect(text),text,search_text(text),content_hash(crate::clip::detect(text),text.as_bytes()),id])?;
+        tx.execute("UPDATE clips SET kind=?1,text=?2,search=?3,payload=NULL,hash=?4,pastes=CASE WHEN hash=?4 THEN pastes ELSE 0 END WHERE id=?5 AND kind IN('text','link','email')",params![crate::clip::detect(text),text,search_text(text),content_hash(crate::clip::detect(text),text.as_bytes()),id])?;
         tx.execute("DELETE FROM formats WHERE clip_id=?1", [id])?;
         tx.commit()
     }

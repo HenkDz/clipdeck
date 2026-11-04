@@ -5,6 +5,53 @@ mod cases {
         Store::from_connection(Connection::open_in_memory().unwrap(), n, 16).unwrap()
     }
     #[test]
+    fn v3_migration_adds_paste_counts_without_changing_clips() {
+        let mut s = store(10);
+        let c = clip("image batch notes");
+        let id = s.record(&c, false, false).unwrap().unwrap();
+        s.record(&c, false, false).unwrap();
+        s.pin(id).unwrap();
+        s.db.execute_batch("ALTER TABLE clips DROP COLUMN pastes; PRAGMA user_version=3;")
+            .unwrap();
+        let migrated = Store::from_connection(s.db, 10, 16).unwrap();
+        let saved = migrated.list("").unwrap().remove(0);
+        assert_eq!(
+            (saved.id, saved.copies, saved.pastes, saved.pinned),
+            (id, 2, 0, true)
+        );
+        assert_eq!(saved.text, c.text);
+    }
+    #[test]
+    fn paste_counts_persist_and_stale_completions_do_not_mark_new_content() {
+        let path =
+            std::env::temp_dir().join(format!("clipdeck-paste-count-{}.db", std::process::id()));
+        let mut s = Store::open(&path, 10, 16).unwrap();
+        let c = clip("first");
+        let hash = content_hash(&c.kind, &c.payload);
+        let id = s.record(&c, false, false).unwrap().unwrap();
+        s.mark_pasted(id, &hash).unwrap();
+        s.mark_pasted(id, &hash).unwrap();
+        s.record(&c, false, false).unwrap();
+        let saved = s.list("").unwrap().remove(0);
+        assert_eq!((saved.copies, saved.pastes), (2, 2));
+        drop(s);
+        let mut s = Store::open(&path, 10, 16).unwrap();
+        assert_eq!(s.list("").unwrap()[0].pastes, 2);
+        s.edit(id, "first").unwrap();
+        assert_eq!(s.list("").unwrap()[0].pastes, 2);
+        s.edit(id, "edited").unwrap();
+        s.mark_pasted(id, &hash).unwrap();
+        assert_eq!(s.list("").unwrap()[0].pastes, 0);
+        s.delete(id).unwrap();
+        let new = clip("replacement");
+        let new_id = s.record(&new, false, false).unwrap().unwrap();
+        assert_eq!(new_id, id);
+        s.mark_pasted(id, &hash).unwrap();
+        assert_eq!(s.list("").unwrap()[0].pastes, 0);
+        drop(s);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
     fn v2_migration_failure_rolls_back_columns_and_image_formats() {
         let mut db = Connection::open_in_memory().unwrap();
         db.execute_batch(
@@ -98,7 +145,7 @@ mod cases {
         assert_eq!(
             s.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            3
+            4
         );
         assert!(
             s.db.query_row(
@@ -229,7 +276,7 @@ mod cases {
         assert_eq!(
             s.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            3
+            4
         );
         s.db.pragma_update(None, "user_version", 99).unwrap();
         assert!(migrate(&mut s.db).is_err());

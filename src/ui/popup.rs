@@ -227,6 +227,9 @@ impl Popup {
                     self.selected = (self.selected + 1).min(self.clips.len().saturating_sub(1))
                 }
                 "enter" => self.selected_command(Command::Paste(mods.shift), window, cx),
+                "c" if mods.control && !mods.shift && !mods.alt => {
+                    self.selected_command(Command::Copy, window, cx)
+                }
                 "space" if self.input.read(cx).value().is_empty() => {
                     self.selected_command(Command::Preview, window, cx)
                 }
@@ -253,7 +256,8 @@ impl Popup {
     pub(super) fn footer(cx: &App) -> Div {
         div()
             .flex()
-            .gap_3()
+            .flex_wrap()
+            .gap_2()
             .px_3()
             .py_2()
             .border_t_1()
@@ -263,6 +267,7 @@ impl Popup {
             .children(
                 [
                     ("enter", "paste"),
+                    ("ctrl-c", "copy"),
                     ("shift-enter", "plain text"),
                     ("ctrl-p", "pin"),
                     ("delete", "delete"),
@@ -276,5 +281,20 @@ impl Popup {
                         .child(label)
                 }),
             )
+    }
+    pub(super) fn copy_selected_to_clipboard(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editor.is_none()
+            && self.preview.is_none()
+            && self.details.is_none()
+            && self.context_menu.is_none()
+            && self.input.read(cx).focus_handle(cx).is_focused(window)
+        {
+            self.selected_command(Command::Copy, window, cx);
+            cx.stop_propagation();
+        }
     }
 }

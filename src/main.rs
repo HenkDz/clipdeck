@@ -110,6 +110,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             cx.refresh_windows();
                         }
                         platform::Event::ClipboardChanged => cx.refresh_windows(),
+                        platform::Event::PasteSent { id, hash } => {
+                            if let Err(error) = store.borrow_mut().mark_pasted(id, &hash) {
+                                eprintln!("Store paste: {error}");
+                            }
+                            if let Some(view) = &view {
+                                view.update(cx, |v, cx| v.reload(cx));
+                            }
+                        }
                         platform::Event::ImageLocationChanged => {
                             if let Some(view) = &view {
                                 view.update(cx, |v, cx| v.reload(cx));

@@ -157,8 +157,12 @@ impl Popup {
                         }
                         if !matches!(cmd, Command::Copy) {
                             std::thread::sleep(std::time::Duration::from_millis(delay));
-                            if let Err(error) = target.paste(mouse) {
-                                eprintln!("Paste: {error}");
+                            match target.paste(mouse) {
+                                Ok(()) => platform::paste_sent(
+                                    clip.id,
+                                    crate::store::content_hash(&clip.kind, &clip.payload),
+                                ),
+                                Err(error) => eprintln!("Paste: {error}"),
                             }
                         }
                     });

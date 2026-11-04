@@ -9,6 +9,7 @@ pub struct Format {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Clip {
     pub copies: i64,
+    pub pastes: i64,
     pub file_path: String,
     pub screenshot_title: String,
     pub source_exe: String,
@@ -60,6 +61,7 @@ impl Clip {
     pub fn text(text: String, source: String) -> Self {
         Self {
             copies: 1,
+            pastes: 0,
             file_path: String::new(),
             screenshot_title: String::new(),
             source_exe: String::new(),
