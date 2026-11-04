@@ -128,6 +128,9 @@ pub fn configure_popup(window: &gpui::Window) {
     {
         unsafe {
             let hwnd = HWND(handle.hwnd.get() as *mut _);
+            if let Err(error) = super::icon::set_window(hwnd) {
+                eprintln!("Window icon: {error}");
+            }
             use windows::Win32::{Graphics::Gdi::*, UI::HiDpi::*};
             let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
             SetWindowLongPtrW(

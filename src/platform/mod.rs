@@ -10,6 +10,7 @@ mod capture;
 mod clipboard;
 mod focus;
 mod foreground;
+mod icon;
 mod image;
 mod instance;
 pub mod locations;

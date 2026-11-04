@@ -51,23 +51,13 @@ pub fn create(
         };
         let _ = sender.send_blocking(event);
     }));
-    let mut rgba = vec![0u8; 32 * 32 * 4];
-    for y in 0..32 {
-        for x in 0..32 {
-            let i = (y * 32 + x) * 4;
-            let ink = (7..25).contains(&x) && (5..27).contains(&y);
-            rgba[i..i + 4].copy_from_slice(if ink {
-                &[237, 235, 228, 255]
-            } else {
-                &[38, 38, 36, 255]
-            });
-        }
-    }
+    let icon = image::load_from_memory(include_bytes!("../../assets/tray.png"))?.into_rgba8();
+    let (width, height) = icon.dimensions();
     Ok(TrayIconBuilder::new()
         .with_tooltip("Clipdeck")
         .with_menu(Box::new(menu))
         .with_menu_on_left_click(false)
-        .with_icon(Icon::from_rgba(rgba, 32, 32)?)
+        .with_icon(Icon::from_rgba(icon.into_raw(), width, height)?)
         .build()?)
 }
 pub fn open_external(path: &str) -> Result<(), String> {

@@ -1,5 +1,9 @@
 # Clipdeck
 
+<p align="center">
+  <img src="assets/clipdeck.png" alt="Clipdeck's stacked clipboard icon" width="96">
+</p>
+
 **A keyboard-first clipboard history for Windows.** Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>,
 type a few letters, press <kbd>Enter</kbd>, and the clip lands in the app you were using.
 Text, links, screenshots and whole file selections, searchable and one keystroke away.
@@ -114,7 +118,7 @@ a selected row for the bulk actions. Search, filter changes and reopening start 
 
 ### Download
 
-Get `clipdeck-0.1.0-windows-x64.zip` from the
+Get `clipdeck-0.1.1-windows-x64.zip` from the
 [latest release](https://github.com/HenkDz/clipdeck/releases/latest), unzip it anywhere and run
 `clipdeck.exe`. There is no installer; your history and settings live in `%APPDATA%\Clipdeck`.
 
@@ -133,7 +137,8 @@ Clipdeck runs in the background with a tray icon:
 ### Build from source
 
 **Requirements:** [Rust](https://rustup.rs) with the MSVC toolchain (Visual Studio Build Tools
-with "Desktop development with C++"). The repository pins Rust 1.99.1 in `rust-toolchain.toml`;
+with "Desktop development with C++" and the Windows SDK). The SDK resource compiler embeds
+the icon and version metadata. The repository pins Rust 1.99.1 in `rust-toolchain.toml`;
 rustup installs it on the first build.
 
 ```powershell

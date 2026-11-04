@@ -673,3 +673,28 @@ Limits: attachment acceptance depends on the receiving app; no chat upload was
 attempted. Paste indicators count Clipdeck's successful paste chords, not external
 Ctrl+V actions or confirmed target consumption. Cross-clip bulk drag is outside
 this change; the existing per-clip drag behavior is preserved.
+
+## Stacked clipboard icon and v0.1.1 (2026-11-04)
+
+Applied the owner's selected icon (option 1). `assets/clipdeck.png` is the original
+imagegen artwork; the ICO contains 16, 24, 32, 48, 64, 128 and 256 px images, and
+the tray uses its 32 px PNG. The Windows SDK resource compiler embeds the icon and
+version metadata at build time. Popup windows load the appropriate native sizes.
+The assets are self-contained in the executable, with no added Rust dependencies,
+crate changes or schema migration. `scripts/generate-icons.py` regenerates the
+derived assets with Pillow; Python is not needed for normal builds.
+
+Rust 1.99.1: fmt, clippy with `-D warnings`, all 54 ordinary tests (2 ignored)
+and the release build pass. The native clipboard tests were not rerun for this
+artwork/resource change. The release remains unsigned, as v0.1.0 was.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Executable icon resources | PASS | Read the compiled x64 PE's Windows resources with `FindResourceW`: all seven icon images match the selected ICO byte-for-byte. |
+| Native version metadata | PASS | Windows reads FileDescription/ProductName `Clipdeck` and FileVersion/ProductVersion `0.1.1`. |
+| Running popup icons | PASS | Actual release process: `WM_GETICON` plus `GetIconInfo` reports its 16×16 small and 32×32 large icons. |
+| Tray asset | PASS | Inspected the actual 32 px derived PNG and launched the release with the embedded PNG replacing the placeholder artwork. |
+| Owner history | PASS | Final release uses normal APPDATA; schema remains v5 and SQLite `quick_check` returns `ok`. |
+
+The portable Windows x64 ZIP is versioned separately from v0.1.0 and accompanied
+by SHA-256 checksums. Source and README carry the new icon and download version.
