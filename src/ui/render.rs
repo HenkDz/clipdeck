@@ -124,5 +124,14 @@ impl Render for Popup {
                     .child(e)
             }))
             .child(Self::footer(cx))
+            // Reserve horizontal room for the second menu inside the 480px popup.
+            .children(self.context_menu.as_ref().map(|(menu, y)| {
+                deferred(
+                    anchored()
+                        .position(point(px(8.), *y))
+                        .snap_to_window_with_margin(px(8.))
+                        .child(menu.clone()),
+                )
+            }))
     }
 }

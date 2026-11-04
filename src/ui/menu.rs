@@ -24,7 +24,7 @@ fn item(label: &str, view: WeakEntity<Popup>, id: i64, cmd: Command) -> PopupMen
             .flex()
             .items_center()
             .w_full()
-            .min_w(px(180.))
+            .min_w(px(160.))
             .gap_3()
             .text_color(if matches!(cmd, Command::Delete) {
                 cx.theme().danger
@@ -43,17 +43,13 @@ pub(super) fn build(
     mut menu: PopupMenu,
     view: WeakEntity<Popup>,
     id: i64,
+    clip: &crate::clip::Clip,
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let Some(clip) = view
-        .upgrade()
-        .and_then(|v| v.read(cx).clips.iter().find(|c| c.id == id).cloned())
-    else {
-        return menu;
-    };
     menu = menu
-        .min_w(px(240.))
+        .min_w(px(220.))
+        .max_w(px(230.))
         .item(item("Paste", view.clone(), id, Command::Paste(false)))
         .item(
             item(
@@ -84,7 +80,7 @@ pub(super) fn build(
             } else {
                 sub = sub.item(PopupMenuItem::new("Use Paste to copy files").disabled(true));
             }
-            sub
+            sub.min_w(px(200.)).max_w(px(220.))
         })
         .separator()
         .item(item(
@@ -98,12 +94,14 @@ pub(super) fn build(
         .item(item("Delete", view.clone(), id, Command::Delete))
         .separator();
     menu.submenu("More", window, cx, move |sub, _, _| {
-        sub.item(item(
-            "Copy without pasting",
-            view.clone(),
-            id,
-            Command::Copy,
-        ))
-        .item(item("Clip details", view.clone(), id, Command::Details))
+        sub.min_w(px(200.))
+            .max_w(px(220.))
+            .item(item(
+                "Copy without pasting",
+                view.clone(),
+                id,
+                Command::Copy,
+            ))
+            .item(item("Clip details", view.clone(), id, Command::Details))
     })
 }

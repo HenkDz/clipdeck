@@ -29,6 +29,7 @@ pub struct Popup {
     pub(super) error: Option<String>,
     pub(super) editor: Option<(i64, Entity<TextareaState>)>,
     pub(super) details: Option<String>,
+    pub(super) context_menu: Option<(Entity<gpui_component::menu::PopupMenu>, Pixels)>,
     pub(super) paused: Arc<AtomicBool>,
     _subscriptions: Vec<Subscription>,
 }
@@ -72,6 +73,7 @@ impl Popup {
             error: None,
             editor: None,
             details: None,
+            context_menu: None,
             paused,
             _subscriptions: vec![change, activation, theme],
         };
@@ -87,6 +89,7 @@ impl Popup {
         self.error = None;
         self.editor = None;
         self.details = None;
+        self.context_menu = None;
         self.input.update(cx, |s, cx| {
             s.set_value("", window, cx);
             s.focus(window, cx);

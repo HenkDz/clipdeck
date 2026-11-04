@@ -3,7 +3,7 @@ use gpui::*;
 use gpui_component::{
     ActiveTheme, Icon,
     button::{Button, ButtonVariants},
-    menu::ContextMenuExt,
+    menu::PopupMenu,
 };
 use gpui_kit_assets::IconName;
 use std::sync::Arc;
@@ -65,7 +65,6 @@ impl Popup {
                 .child(icon(&clip.kind))
                 .into_any_element()
         };
-        let view = cx.entity().downgrade();
         div()
             .id(("clip", id as u64))
             .w_full()
@@ -156,9 +155,28 @@ impl Popup {
                 this.selected = ix;
                 cx.notify();
             }))
-            .context_menu(move |menu, window, cx| {
-                super::menu::build(menu, view.clone(), id, window, cx)
-            })
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    let view = cx.entity().downgrade();
+                    let Some(clip) = this.clips.iter().find(|c| c.id == id).cloned() else {
+                        return;
+                    };
+                    let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
+                        super::menu::build(menu, view.clone(), id, &clip, window, cx)
+                    });
+                    cx.subscribe_in(&menu, window, |this, _, _: &DismissEvent, window, cx| {
+                        this.context_menu = None;
+                        this.input.update(cx, |s, cx| s.focus(window, cx));
+                        cx.notify();
+                    })
+                    .detach();
+                    menu.focus_handle(cx).focus(window, cx);
+                    this.context_menu = Some((menu, event.position.y));
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
             .into_any_element()
     }
 }
