@@ -71,10 +71,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     cx.update(|cx| match event {
                         platform::Event::Clip { clip, own_write } => {
                             if !paused.load(Ordering::SeqCst) {
-                                if let Err(error) =
-                                    store.borrow_mut().record(&clip, own_write, false)
-                                {
-                                    eprintln!("Store capture: {error}");
+                                match store.borrow_mut().record(&clip, own_write, false) {
+                                    Ok(Some(id)) => {
+                                        platform::set_current(id, clip.sequence);
+                                    }
+                                    Ok(None) => {}
+                                    Err(error) => eprintln!("Store capture: {error}"),
                                 }
                                 if let Some(view) = &view {
                                     view.update(cx, |v, cx| v.reload(cx));
@@ -84,6 +86,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         platform::Event::Pause => {
                             cx.refresh_windows();
                         }
+                        platform::Event::ClipboardChanged => cx.refresh_windows(),
                         platform::Event::Quit => cx.quit(),
                         platform::Event::Settings => {
                             if let Ok(dir) = config::directory()

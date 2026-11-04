@@ -4,6 +4,46 @@ mod cases {
     fn store(n: usize) -> Store {
         Store::from_connection(Connection::open_in_memory().unwrap(), n, 16).unwrap()
     }
+    #[test]
+    fn v2_images_migrate_without_bitmap_blobs_and_copy_counts_persist() {
+        let path =
+            std::env::temp_dir().join(format!("clipdeck-v2-migration-{}.db", std::process::id()));
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("CREATE TABLE clips(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,text TEXT NOT NULL,search TEXT NOT NULL,payload BLOB,hash BLOB NOT NULL,thumbnail BLOB NOT NULL,source TEXT NOT NULL,created INTEGER NOT NULL,updated INTEGER NOT NULL,rank INTEGER NOT NULL,pinned INTEGER NOT NULL DEFAULT 0,UNIQUE(kind,hash));
+            CREATE TABLE formats(clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,name TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(clip_id,name));
+            PRAGMA user_version=2;").unwrap();
+        let png = b"existing canonical PNG";
+        db.execute(
+            "INSERT INTO clips VALUES(42,'image','2×2','2×2',?1,?2,X'0102','ShareX',123,456,7,1)",
+            params![png, content_hash("image", png)],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO formats VALUES(42,'CF_DIBV5',zeroblob(19000000))",
+            [],
+        )
+        .unwrap();
+        let before = std::fs::metadata(&path).unwrap().len();
+        let mut s = Store::from_connection(db, 10, 16).unwrap();
+        s.db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+            .unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() < before / 10);
+        let mut c = s.list("").unwrap().remove(0);
+        s.hydrate(&mut c).unwrap();
+        assert_eq!(
+            (c.id, c.created, c.updated, c.pinned, c.copies),
+            (42, 123, 456, true, 1)
+        );
+        assert_eq!(c.payload, png);
+        assert!(c.formats.is_empty());
+        s.record(&c, false, false).unwrap();
+        assert_eq!(s.list("").unwrap()[0].copies, 2);
+        drop(s);
+        let s = Store::open(&path, 10, 16).unwrap();
+        assert_eq!(s.list("").unwrap()[0].copies, 2);
+        drop(s);
+        std::fs::remove_file(path).unwrap();
+    }
     fn clip(s: &str) -> Clip {
         Clip::text(s.into(), "Test".into())
     }
@@ -34,7 +74,7 @@ mod cases {
         assert_eq!(
             s.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            2
+            3
         );
         assert!(
             s.db.query_row(
@@ -165,7 +205,7 @@ mod cases {
         assert_eq!(
             s.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            2
+            3
         );
         s.db.pragma_update(None, "user_version", 99).unwrap();
         assert!(migrate(&mut s.db).is_err());
@@ -216,7 +256,11 @@ mod cases {
             let mut loaded = s.list(kind).unwrap().remove(0);
             s.hydrate(&mut loaded).unwrap();
             assert_eq!(loaded.kind, kind);
-            assert_eq!(loaded.formats, c.formats);
+            if kind == "image" {
+                assert!(loaded.formats.is_empty());
+            } else {
+                assert_eq!(loaded.formats, c.formats);
+            }
             assert_eq!(loaded.payload, c.payload);
             assert_eq!(loaded.thumbnail, c.thumbnail);
         }

@@ -193,6 +193,12 @@ impl Render for Popup {
                     .child(e)
             }))
             .child(Self::footer(cx))
+            .children((self.store.borrow().skipped > 0).then(|| {
+                div().px_3().pb_2().text_xs().child(format!(
+                    "Skipped {} large clips",
+                    self.store.borrow().skipped
+                ))
+            }))
             // Reserve horizontal room for the second menu inside the 480px popup.
             .children(self.context_menu.as_ref().map(|(menu, y)| {
                 deferred(

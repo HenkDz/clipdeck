@@ -8,6 +8,11 @@ pub struct Format {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Clip {
+    pub copies: i64,
+    pub file_path: String,
+    pub screenshot_title: String,
+    pub source_exe: String,
+    pub sequence: u32,
     pub id: i64,
     pub kind: String,
     pub text: String,
@@ -54,6 +59,11 @@ pub fn detect(text: &str) -> &'static str {
 impl Clip {
     pub fn text(text: String, source: String) -> Self {
         Self {
+            copies: 1,
+            file_path: String::new(),
+            screenshot_title: String::new(),
+            source_exe: String::new(),
+            sequence: 0,
             id: 0,
             kind: detect(&text).into(),
             payload: text.as_bytes().to_vec(),
@@ -103,7 +113,17 @@ impl Clip {
             ),
             _ => String::new(),
         };
-        format!("{prefix}{} · {age}", self.source)
+        let copied = if self.copies > 1 {
+            format!(" · copied {}×", self.copies)
+        } else {
+            String::new()
+        };
+        let title = if self.screenshot_title.is_empty() {
+            String::new()
+        } else {
+            format!("Screenshot of {} · ", self.screenshot_title)
+        };
+        format!("{title}{prefix}{} · {age}{copied}", self.source)
     }
 }
 

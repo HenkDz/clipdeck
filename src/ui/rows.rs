@@ -69,6 +69,7 @@ impl Popup {
             .id(("clip", id as u64))
             .w_full()
             .h(px(56.))
+            .relative()
             .px_3()
             .py_2()
             .flex()
@@ -81,6 +82,24 @@ impl Popup {
             } else {
                 cx.theme().background
             })
+            .children((clip.copies > 1).then(|| {
+                div()
+                    .absolute()
+                    .left_0()
+                    .top_0()
+                    .bottom_0()
+                    .w(px(3.))
+                    .bg(cx.theme().accent)
+            }))
+            .children((crate::platform::current_id() == Some(id)).then(|| {
+                div()
+                    .absolute()
+                    .right(px(4.))
+                    .top(px(4.))
+                    .size(px(4.))
+                    .rounded_full()
+                    .bg(cx.theme().muted_foreground)
+            }))
             .child(image)
             .child(
                 div()

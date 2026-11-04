@@ -19,6 +19,25 @@ use windows::{
 };
 
 const TEXT: u32 = 13;
+static CURRENT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static SEQUENCE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static EVENTS: std::sync::OnceLock<async_channel::Sender<Event>> = std::sync::OnceLock::new();
+pub fn set_current(id: i64, sequence: u32) {
+    if unsafe { GetClipboardSequenceNumber() } == sequence {
+        CURRENT.store(id, Ordering::SeqCst);
+        SEQUENCE.store(sequence, Ordering::SeqCst);
+    }
+}
+pub fn current_id() -> Option<i64> {
+    (unsafe { GetClipboardSequenceNumber() } == SEQUENCE.load(Ordering::SeqCst))
+        .then(|| CURRENT.load(Ordering::SeqCst))
+        .filter(|id| *id > 0)
+}
+fn changed() {
+    if let Some(sender) = EVENTS.get() {
+        let _ = sender.send_blocking(Event::ClipboardChanged);
+    }
+}
 thread_local! { static SENDER: RefCell<Option<async_channel::Sender<Event>>> = const { RefCell::new(None) }; }
 thread_local! { static PAUSED: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) }; }
 
@@ -107,6 +126,7 @@ fn read(owner: HWND) -> Result<Option<Event>> {
         let clip = super::capture::read()?;
         drop(_guard);
         if let Some(mut clip) = clip {
+            clip.sequence = GetClipboardSequenceNumber();
             let sender = SENDER.with(|s| s.borrow().clone());
             // Shell extensions may block; never hold the clipboard or its message loop.
             thread::spawn(move || {
@@ -121,7 +141,10 @@ fn read(owner: HWND) -> Result<Option<Event>> {
                             .unwrap_or_default();
                 }
                 if let Some(sender) = sender {
-                    let _ = sender.send_blocking(Event::Clip { clip, own_write });
+                    let _ = sender.send_blocking(Event::Clip {
+                        clip: Box::new(clip),
+                        own_write,
+                    });
                 }
             });
         }
@@ -163,24 +186,42 @@ impl Clipboard {
         }
     }
     pub fn write_clip(self, clip: &crate::clip::Clip, plain: bool) -> Result<()> {
-        if plain || clip.formats.is_empty() {
-            return self.write(&clip.text);
+        if plain || (clip.kind != "image" && clip.formats.is_empty()) {
+            self.write(&clip.text)?;
+            set_current(clip.id, unsafe { GetClipboardSequenceNumber() });
+            changed();
+            return Ok(());
         }
-        let _guard = open(HWND(self.0 as *mut _))?;
+        let dib = if clip.kind == "image" {
+            Some(super::image::dib_from_png(&clip.payload).map_err(|e| {
+                windows::core::Error::new(windows::core::HRESULT(0x80070057u32 as i32), e)
+            })?)
+        } else {
+            None
+        };
+        let guard = open(HWND(self.0 as *mut _))?;
         unsafe {
             EmptyClipboard()?;
             put(format(&marker())?, &1u32.to_le_bytes())?;
-            for f in &clip.formats {
-                let id = match f.name.as_str() {
-                    "CF_UNICODETEXT" => 13,
-                    "CF_DIB" => 8,
-                    "CF_DIBV5" => 17,
-                    "CF_HDROP" => 15,
-                    name => format(name)?,
-                };
-                put(id, &f.data)?;
+            if let Some(dib) = dib {
+                put(format("PNG")?, &clip.payload)?;
+                put(8, &dib)?;
+            } else {
+                for f in &clip.formats {
+                    let id = match f.name.as_str() {
+                        "CF_UNICODETEXT" => 13,
+                        "CF_DIB" => 8,
+                        "CF_DIBV5" => 17,
+                        "CF_HDROP" => 15,
+                        name => format(name)?,
+                    };
+                    put(id, &f.data)?;
+                }
             }
         }
+        drop(guard);
+        set_current(clip.id, unsafe { GetClipboardSequenceNumber() });
+        changed();
         Ok(())
     }
 }
@@ -198,6 +239,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             Ok(event) => event,
             Err(e) => Some(Event::Error(format!("Clipboard read: {e}"))),
         };
+        changed();
         if let Some(event) = event {
             SENDER.with(|s| {
                 if let Some(sender) = s.borrow().as_ref() {
@@ -214,6 +256,7 @@ pub fn start_watcher(
     sender: async_channel::Sender<Event>,
     paused: Arc<AtomicBool>,
 ) -> Result<Clipboard> {
+    let _ = EVENTS.set(sender.clone());
     let (ready, result) = mpsc::sync_channel(1);
     thread::spawn(move || unsafe {
         SENDER.with(|s| *s.borrow_mut() = Some(sender.clone()));

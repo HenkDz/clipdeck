@@ -10,7 +10,7 @@ pub fn sync_theme(window: Option<&mut Window>, cx: &mut App) {
         c.muted_foreground = rgb(0x8a8984).into();
         c.border = rgb(if dark { 0x454542 } else { 0xe5e4e0 }).into();
         c.secondary = rgb(if dark { 0x3c3c39 } else { 0xeeedeb }).into();
-        c.accent = c.secondary;
+        c.accent = rgb(if dark { 0x7ba9cf } else { 0x336d99 }).into();
         c.accent_foreground = c.foreground;
         c.popover = c.background;
         c.popover_foreground = c.foreground;

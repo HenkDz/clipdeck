@@ -7,7 +7,7 @@ use windows::{
     },
     core::{PCWSTR, PWSTR},
 };
-pub fn name() -> String {
+fn owner_path() -> Option<Vec<u16>> {
     unsafe {
         let hwnd = GetClipboardOwner()
             .ok()
@@ -16,7 +16,7 @@ pub fn name() -> String {
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
         let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
-            return "Unknown app".into();
+            return None;
         };
         let mut path = vec![0u16; 32768];
         let mut len = path.len() as u32;
@@ -28,9 +28,26 @@ pub fn name() -> String {
         );
         let _ = CloseHandle(process);
         if result.is_err() {
-            return "Unknown app".into();
+            return None;
         }
         path.truncate(len as usize);
+        Some(path)
+    }
+}
+pub fn exe_name() -> String {
+    owner_path()
+        .and_then(|p| {
+            std::path::Path::new(&String::from_utf16_lossy(&p))
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+        })
+        .unwrap_or_default()
+}
+pub fn name() -> String {
+    unsafe {
+        let Some(mut path) = owner_path() else {
+            return "Unknown app".into();
+        };
         path.push(0);
         let size = GetFileVersionInfoSizeW(PCWSTR(path.as_ptr()), None);
         if size > 0 && size < 16 * 1024 * 1024 {
