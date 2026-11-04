@@ -91,7 +91,9 @@ Changes apply immediately.
 | <kbd>Enter</kbd> | Paste |
 | <kbd>Shift</kbd>+<kbd>Enter</kbd> | Paste as plain text |
 | <kbd>1</kbd>–<kbd>9</kbd> | Paste the nth clip (search box empty) |
-| <kbd>Ctrl</kbd>+<kbd>C</kbd> | Copy the clip without pasting |
+| <kbd>Ctrl</kbd>+click | Toggle a clip in the selection |
+| <kbd>Shift</kbd>+click / <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> | Select a range |
+| <kbd>Ctrl</kbd>+<kbd>C</kbd> | Copy selected clips without pasting |
 | <kbd>Space</kbd> | Preview (file gallery for file clips) |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Pin or unpin |
 | <kbd>Del</kbd> | Delete |
@@ -102,6 +104,11 @@ Changes apply immediately.
 
 In the file gallery: arrows move, <kbd>Enter</kbd> pastes that one file, <kbd>Space</kbd> opens
 its preview. While editing a clip, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves.
+
+In the history list, Enter, Ctrl+C, Ctrl+P and Delete act on the selected clips.
+Selected images and files become one file-attachment batch, in list order; selected text
+is joined with line breaks. Text and files cannot be combined in one batch. Right-click
+a selected row for the bulk actions. Search, filter changes and reopening start a fresh selection.
 
 ## Getting started
 

@@ -608,3 +608,68 @@ and ShareX tests were not rerun for this change.
 A consistent pre-migration backup is in the ignored
 `target/history-before-v4.db`. Final release remains running from this
 worktree's `target/release/clipdeck.exe`. Changes are local only.
+
+## Multi-selection integrated on Nour/m2-polish (2026-11-04)
+
+Integrated the multi-selection work onto the owner's chosen `Nour/m2-polish`
+branch, preserving its schema v5, settings, gallery, drag-out, kept-open paste
+flow, separate normal/plain paste counters and delayed clipboard capture.
+No crate versions or migrations changed; no vendoring or patches.
+
+Ctrl-click toggles individual history rows. Shift-click and Shift+Up/Down select
+an anchored range; Ctrl+Shift adds a range. Plain click selects one row.
+Selection follows clip IDs through reloads and reordering. Search, filter changes
+and reopening reset it. The popup shows the selected count and modifier hints.
+Right-click preserves a selection when the clicked row belongs to it.
+
+Ctrl+C and Enter operate on the selection. Text joins with line breaks in list
+order. Several images/files become one Windows CF_HDROP attachment batch, with
+duplicate paths removed. Stored screenshots use the existing source-file/export
+resolver off the UI thread. Mixed text/file selections and unavailable files
+fail before replacing the clipboard. Batch payload loading and file resolution
+run in the background, with a 128 MiB limit. Paste completion marks every original
+clip through a transaction guarded by its content hash. Pin/unpin applies one
+uniform state; Delete is transactional. Preview and editing require one clip.
+
+Desktop testing caught the search input consuming Delete before the raw key
+handler. Capturing its Delete action in list view fixes both single and bulk
+deletion while preserving normal text-editor behavior. Clipboard access by
+Clipdeck's watcher and workers is serialized, and clipboard markers use the
+sequence finalized after close; all members of a batch get the current marker.
+
+Validation: Rust 1.99.1; `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings`, `cargo test` (**54 passed, 2 ignored**)
+and `cargo build --release` pass. The opt-in real Windows clipboard test also
+passed separately with Clipdeck stopped. It checks privacy/own-write handling,
+PNG/DIB, combined Unicode text, a two-file CF_HDROP batch with Unicode paths,
+current markers and rejecting mixed selections without changing the clipboard.
+The other ignored ShareX test was not rerun for this change.
+
+Unit coverage includes Ctrl toggles, anchored range growth/shrink, Ctrl navigation,
+reordering/removal, empty selections, batch type rejection, missing files,
+DROPFILES layout, uniform pinning, deletion/paste rollback and schema-v5 normal
+versus plain counters with stale-content protection.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Ctrl-click and Shift-click | PASS | Isolated release fixture: Shift-click A through C selected three; Ctrl-click B removed only B. Selected styling/count shown in `screenshots/multiselect-polish-text.png`. |
+| Ctrl+C text selection | PASS | Read actual Windows Unicode clipboard: exactly `Selection fixture A\nSelection fixture C`. Popup stayed visible; all copy/paste counters stayed unchanged. |
+| Image attachment batch | PASS | Selected two image rows and used Ctrl+C. Native `DragQueryFileW` read exactly `selection-image-5.png` and `selection-image-6.png` from one CF_HDROP payload. |
+| Chrome receives the batch | PASS | Pasted the batch into a local HTML paste-event fixture in Chrome. Its accessibility text reported `Attachments: 2`, both PNG names and 146 bytes each. This verifies a browser paste event, not a chat service upload. |
+| Bulk menu | PASS | Right-click on a selected image kept both selected and showed Copy/Paste/Pin/Delete selected; `screenshots/multiselect-polish-images-menu.png`. |
+| Pin/unpin | PASS | Menu Pin selected set only fixture IDs 5/6 to pinned; Ctrl+P unpinned both. Independent SQLite reads confirmed ID 7 was unchanged. |
+| Enter batch completion | PASS | Enter hid the popup; independent SQLite reads showed both selected image paste counters advance together, with the third untouched. Native SendInput completion and browser attachment reception were checked separately. |
+| Shift+Up/Down | PASS | Expanded one row to three with Shift+Down, then shrank to two with Shift+Up; inspected actual popup styling and count. |
+| Delete selection | PASS | After fixing the input binding, selected fixture IDs 1/2 with Shift+Down and pressed Delete. Both disappeared; SQLite retained IDs 3–7. Only the isolated fixture history was changed. |
+| Schema v5 compatibility | PASS | The isolated v4 fixture migrated through the existing v5 migration; existing image paste counters remained across release restarts. No new migration was introduced. |
+| Normal history and final release | PASS | Confirmed the running executable comes from `m2-polish/target/release`; the normal APPDATA history reports schema v5 and SQLite `quick_check` returns `ok`. |
+
+Desktop fixtures used `%TEMP%/clipdeck-multiselect-check`, separate from the
+owner's normal history. The final release runs from
+`C:/Users/nooro/orca/workspaces/clipdeck/m2-polish/target/release/clipdeck.exe`
+with normal APPDATA. Changes are committed locally only.
+
+Limits: attachment acceptance depends on the receiving app; no chat upload was
+attempted. Paste indicators count Clipdeck's successful paste chords, not external
+Ctrl+V actions or confirmed target consumption. Cross-clip bulk drag is outside
+this change; the existing per-clip drag behavior is preserved.
