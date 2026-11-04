@@ -757,3 +757,41 @@ metadata is a separate trust mechanism. The app folder must be writable. Keep th
 Windows signing profile available: its non-exportable private key is outside the
 repository. Recovery artifacts are intentionally retained, and external database
 locks can require manual recovery using the reported files.
+
+## Copy feedback and reusable selection batches — v0.1.6 (2026-11-04)
+
+Ctrl+C now records explicit copy completion instead of relying on the clipboard
+watcher, which correctly ignores Clipdeck's own-write marker. Successful copies
+increment/promote their original rows; several clips also upsert one reusable
+batch above recent history. Both changes share one SQLite transaction and the
+existing capture upsert. Hash guards protect edited/deleted rows, repeated batches
+deduplicate, and original paste counters and pin states are preserved. No schema
+migration or crate-version change. Existing retention and size limits apply.
+
+The blue border appears for current clipboard members immediately after writing,
+before Shell thumbnail generation. Member copy counts retain it afterward. The
+batch gets its own current marker, stored payload/formats and thumbnail. Ctrl/Shift
+row selection switches the inactive tray popup into the same activated keyboard
+mode used by search; ordinary tray row clicks retain their no-activation behavior.
+
+Rust 1.99.1: fmt, clippy `--all-targets -- -D warnings`, **65 passed, 2 ignored**,
+release build and signed packaging pass. The ignored real Windows clipboard test
+was additionally run explicitly and passed on the final code. The owner ShareX
+history test was not rerun. Unit cases cover transactional rollback, batch dedupe,
+single-copy counts, stale/deleted members, matching group/member payloads and limits.
+
+| Desktop/native check | Result | How checked |
+| --- | --- | --- |
+| Ctrl-click then Ctrl+C, text | PASS | Release fixture: selected A/B with a real modifier click and Ctrl+C. Native Unicode clipboard equals `Copy fixture A\nCopy fixture B`; SQLite has one combined row above A/B, both originals at copies=2, unselected C still 1. Blue borders and the batch row appear in `screenshots/batch-copy-text.png`. |
+| Image attachment batch | PASS | Selected the red/blue PNGs and pressed Ctrl+C. Native CF_HDROP contains exactly both original files, including the Unicode directory. One `2 files` row with a mosaic appears above both blue-bordered originals; `screenshots/batch-copy-images.png`. The yellow PNG remains copies=1. |
+| Repeated selection | PASS | Repeated Ctrl+C with the same images still selected. Same group ID 9, total row count unchanged, group copies=2 and both members copies=3. No paste counts changed; all original PNG bytes match their source files. |
+| Reuse after restart | PASS | Restarted the isolated profile on the exact final release EXE, selected the saved group and pressed Ctrl+C. Native clipboard again contains exactly its two attachments; group copies=3, both original members remain copies=3, total rows unchanged. |
+| Single-item copy | PASS | Selected C alone and pressed Ctrl+C. Native clipboard equals its complete text, its existing row moves up with copies=2, no extra row, no paste-count change. |
+| Failed selections | PASS | Missing-file image batch and mixed text/file batch both show an explicit error. Compared native clipboard contents and every row's copy/paste counters/rank before and after: unchanged. |
+| Native clipboard integration | PASS | Explicit live test checks privacy/own-write suppression, actual text/PNG/DIB/CF_HDROP formats, stored group rehydration/replay, member and group current markers, and rejecting stale sequence markers after another clipboard write. |
+
+The desktop fixture is `target/copy-acceptance-77225cc7`, isolated from the owner's
+APPDATA/LOCALAPPDATA. Desktop checks used an activated popup; the tray modifier
+activation change reuses the existing tested mode/activation path but was not
+independently exercised through an inactive tray window by automation. Pinned
+clips stay above the new batch, and ordinary filters still apply.

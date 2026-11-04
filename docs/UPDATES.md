@@ -25,7 +25,7 @@ Close a running development copy before rebuilding its executable. With Rust
 1.99.1, Visual Studio Build Tools/Windows SDK and Python installed:
 
 ```powershell
-powershell -NoProfile -File scripts/build-release.ps1 -Notes docs/releases/v0.1.5.md -Schema 5
+powershell -NoProfile -File scripts/build-release.ps1 -Notes docs/releases/v0.1.6.md -Schema 5
 ```
 
 The script runs fmt, clippy with warnings denied, tests and the release build,

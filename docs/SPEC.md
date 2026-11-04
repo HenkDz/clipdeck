@@ -20,6 +20,13 @@ Read it to understand behavior; never copy its code — Clipdeck is not GPL.
 - Selected row shows inline actions: paste as plain text, pin, delete.
 - Footer shows the shortcuts: `Enter` paste · `Shift+Enter` plain text · `Ctrl+P` pin · `Del` delete.
 - `1`–`9` paste the nth visible clip when the search box is empty.
+- Ctrl-click toggles clips; Shift-click selects a range. Modifier selection activates
+  a tray-opened popup for keyboard commands. Ordinary tray row clicks remain inactive.
+- Ctrl+C copies the selection, adds the blue copied border to its members and updates
+  their copy counts. Several clips create one reusable row at the top of recent history
+  (below pinned clips); repeating the selection updates that row. Images/files form one
+  attachment batch; text joins with line breaks. Mixed text/file selections show an error.
+  Copying leaves paste counters unchanged.
 
 ### Right-click menu (8 items, grouped by task)
 

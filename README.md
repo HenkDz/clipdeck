@@ -118,7 +118,7 @@ a selected row for the bulk actions. Search, filter changes and reopening start 
 
 ### Download
 
-Get `clipdeck-0.1.5-windows-x64.zip` from the
+Get `clipdeck-0.1.6-windows-x64.zip` from the
 [latest release](https://github.com/HenkDz/clipdeck/releases/latest), unzip it anywhere and run
 `clipdeck.exe`. There is no installer; your history and settings live in `%APPDATA%\Clipdeck`.
 
@@ -140,7 +140,7 @@ Choose **Check for updates** from the tray menu or Settings. Clipdeck shows the 
 version and release notes, downloads and verifies it, then offers **Update and restart**.
 Daily background checks are optional and off by default. The app folder must be writable.
 
-v0.1.1 and earlier need one manual upgrade to v0.1.5 to gain the updater. Your history
+v0.1.1 and earlier need one manual upgrade to v0.1.6 to gain the updater. Your history
 and settings remain in `%APPDATA%\Clipdeck`. Updates use a signed manifest and SHA-256
 checksums. Before replacement, Clipdeck closes and makes a consistent history backup.
 If the new version fails before startup completes, it restores the previous executable
