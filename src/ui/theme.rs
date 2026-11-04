@@ -113,7 +113,7 @@ pub fn sync_theme(window: Option<&mut Window>, cx: &mut App) {
         };
         c.popover_foreground = p.text;
         c.input = p.border;
-        c.ring = p.muted;
+        c.ring = p.border;
         c.success = p.success;
         c.danger = p.danger;
     });

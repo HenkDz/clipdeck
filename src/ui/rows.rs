@@ -396,7 +396,10 @@ impl Popup {
                     let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
                         super::menu::build(menu, view.clone(), id, &clip, window, cx)
                     });
-                    this.open_menu(menu, event.position, Anchor::TopLeft, window, cx);
+                    // Start at the left inset so submenus have room to open rightwards.
+                    this.selected = ix;
+                    let at = point(S2, event.position.y);
+                    this.open_menu(menu, at, Anchor::TopLeft, window, cx);
                     cx.stop_propagation();
                 }),
             )

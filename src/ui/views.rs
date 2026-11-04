@@ -143,10 +143,11 @@ impl Popup {
                     ),
                 ];
                 let info = text.as_ref().map(|t| {
+                    let lines = t.lines().count().max(1);
                     format!(
-                        "{} characters · {} lines{}",
+                        "{} characters · {lines} {}{}",
                         t.chars().count(),
-                        t.lines().count().max(1),
+                        if lines == 1 { "line" } else { "lines" },
                         clip.as_ref()
                             .map(|c| format!(" · {} · {}", c.source, c.age()))
                             .unwrap_or_default()
@@ -235,8 +236,7 @@ impl Popup {
             }
             View::Gallery(g) if g.open => self.file_preview(g, cx),
             View::Gallery(g) => self.gallery(g, window, cx),
-            View::Edit { id, editor } => {
-                let id = *id;
+            View::Edit { editor, .. } => {
                 let editor = editor.clone();
                 let actions = vec![
                     button("cancel", None, "Cancel", false, p)
@@ -246,7 +246,6 @@ impl Popup {
                         .on_click(cx.listener(|this, _, window, cx| this.save_edit(window, cx)))
                         .into_any_element(),
                 ];
-                let title = self.clip_title(id);
                 column
                     .child(self.bar("Edit clip".into(), None, actions, cx))
                     .child(
@@ -259,7 +258,7 @@ impl Popup {
                             .gap(S2)
                             .child(Textarea::new(&editor).flex_1().min_h_0().h_full())
                             .child(caption(
-                                format!("Saving replaces “{title}” with plain text"),
+                                "Saved as plain text; rich formatting is dropped",
                                 p,
                             )),
                     )
@@ -269,12 +268,7 @@ impl Popup {
                 let id = *id;
                 let rows = rows.clone();
                 column
-                    .child(self.bar(
-                        "Details".into(),
-                        Some(self.clip_title(id).to_string()),
-                        vec![],
-                        cx,
-                    ))
+                    .child(self.bar("Details".into(), None, vec![], cx))
                     .child(
                         div()
                             .id("details")
@@ -286,6 +280,14 @@ impl Popup {
                             .flex()
                             .flex_col()
                             .gap(S2)
+                            .child(
+                                div()
+                                    .pb(S1)
+                                    .truncate()
+                                    .text_size(TITLE)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(self.clip_title(id)),
+                            )
                             .children(rows.into_iter().map(|(label, value)| {
                                 div()
                                     .flex()

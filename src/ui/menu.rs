@@ -55,7 +55,7 @@ fn entry(
     label: impl Into<SharedString>,
     icon: IconName,
     key: Option<&'static str>,
-    danger: bool,
+    tone: Tone,
     on_click: impl Fn(&mut Window, &mut App) + 'static,
 ) -> PopupMenuItem {
     let label = label.into();
@@ -66,16 +66,24 @@ fn entry(
             .items_center()
             .w_full()
             .gap(S3)
-            .text_color(if danger {
-                p.danger
-            } else {
-                cx.theme().foreground
+            .text_color(match tone {
+                Tone::Normal => cx.theme().foreground,
+                Tone::Danger => p.danger,
+                Tone::Disabled => p.muted,
             })
             .child(div().flex_1().truncate().child(label.clone()))
             .children(key.map(|key| keycap(key, p)))
     })
     .icon(Icon::new(icon))
     .on_click(move |_, window, cx| on_click(window, cx))
+    .disabled(tone == Tone::Disabled)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Tone {
+    Normal,
+    Danger,
+    Disabled,
 }
 
 fn item(
@@ -84,15 +92,26 @@ fn item(
     id: i64,
     cmd: Command,
 ) -> PopupMenuItem {
-    entry(
-        label,
-        glyph(cmd),
-        shortcut(cmd),
-        cmd == Command::Delete,
-        move |window, cx| {
-            let _ = view.update(cx, |this, cx| this.command(id, cmd, window, cx));
-        },
-    )
+    action(label, view, id, cmd, true)
+}
+
+fn action(
+    label: impl Into<SharedString>,
+    view: WeakEntity<Popup>,
+    id: i64,
+    cmd: Command,
+    enabled: bool,
+) -> PopupMenuItem {
+    let tone = if !enabled {
+        Tone::Disabled
+    } else if cmd == Command::Delete {
+        Tone::Danger
+    } else {
+        Tone::Normal
+    };
+    entry(label, glyph(cmd), shortcut(cmd), tone, move |window, cx| {
+        let _ = view.update(cx, |this, cx| this.command(id, cmd, window, cx));
+    })
 }
 
 pub(super) fn build(
@@ -128,15 +147,13 @@ pub(super) fn build(
     menu = menu
         .separator()
         .item(item("Paste", view.clone(), id, Command::Paste(false)))
-        .item(
-            item(
-                "Paste as plain text",
-                view.clone(),
-                id,
-                Command::Paste(true),
-            )
-            .disabled(!clip.is_text()),
-        );
+        .item(action(
+            "Paste as plain text",
+            view.clone(),
+            id,
+            Command::Paste(true),
+            clip.is_text(),
+        ));
     let subview = view.clone();
     let clip_for_sub = clip.clone();
     menu = menu
@@ -161,7 +178,13 @@ pub(super) fn build(
                 IconName::Pin
             })),
         )
-        .item(item("Edit", view.clone(), id, Command::Edit).disabled(!clip.is_text()))
+        .item(action(
+            "Edit",
+            view.clone(),
+            id,
+            Command::Edit,
+            clip.is_text(),
+        ))
         .separator()
         .item(item("Delete", view.clone(), id, Command::Delete))
         .separator();
@@ -231,7 +254,7 @@ fn paste_as(
                                 name.clone(),
                                 file_icon(*kind),
                                 None,
-                                false,
+                                Tone::Normal,
                                 move |window, cx| {
                                     let _ = view.update(cx, |this, cx| {
                                         this.command(id, Command::PasteFile(ix), window, cx)
@@ -266,9 +289,12 @@ fn paste_as(
 }
 
 /// The header's menu: list density, keep open, settings file.
-pub(super) fn header(menu: PopupMenu, view: WeakEntity<Popup>, popup: &Popup) -> PopupMenu {
-    let compact = popup.compact();
-    let keep = popup.config.keep_open;
+pub(super) fn header(
+    menu: PopupMenu,
+    view: WeakEntity<Popup>,
+    compact: bool,
+    keep: bool,
+) -> PopupMenu {
     let density = |label: &'static str, on: bool| {
         let view = view.clone();
         PopupMenuItem::new(label)
@@ -299,7 +325,7 @@ pub(super) fn header(menu: PopupMenu, view: WeakEntity<Popup>, popup: &Popup) ->
             "Open settings file",
             IconName::Settings2,
             None,
-            false,
+            Tone::Normal,
             |_, _| {
                 if let Ok(dir) = crate::config::directory()
                     && let Err(error) = crate::platform::open_settings(&dir.join("config.toml"))

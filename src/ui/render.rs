@@ -79,14 +79,9 @@ impl Popup {
         let menu_button = icon_button("menu", IconName::Ellipsis, "View options", px(32.), p)
             .on_click(cx.listener(|this, _, window, cx| {
                 let view = cx.entity().downgrade();
-                let menu = PopupMenu::build(window, cx, {
-                    let view = view.clone();
-                    move |menu, _, cx| {
-                        let Some(popup) = view.upgrade() else {
-                            return menu;
-                        };
-                        super::menu::header(menu, view.clone(), popup.read(cx))
-                    }
+                let (compact, keep) = (this.compact(), this.config.keep_open);
+                let menu = PopupMenu::build(window, cx, move |menu, _, _| {
+                    super::menu::header(menu, view.clone(), compact, keep)
                 });
                 let width = window.viewport_size().width;
                 this.open_menu(
