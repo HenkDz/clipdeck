@@ -2,9 +2,10 @@ mod commands;
 mod menu;
 mod mode;
 mod popup;
-mod rows;
-pub use popup::Popup;
-
 mod render;
+mod rows;
 mod theme;
+mod views;
+mod widgets;
+pub use popup::Popup;
 pub use theme::sync_theme;

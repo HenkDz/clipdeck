@@ -326,7 +326,7 @@ mod cases {
         c.text = "one".into();
         c.payload = b"one".to_vec();
         s.record(&c, false, false).unwrap();
-        assert!(s.list("").unwrap()[0].meta().starts_with("1 file ·"));
+        assert!(s.list("").unwrap()[0].meta().starts_with("File ·"));
     }
     #[test]
     fn migrations_and_fts() {

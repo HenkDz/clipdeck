@@ -48,6 +48,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Seeded fixtures (retention still applies; set history_size >= 5000)");
     }
     eprintln!("SQLite FTS5 trigram search: {}", store.fts);
+    platform::set_geometry(platform::Geometry {
+        size: (config.width, config.height),
+        position: config.position,
+    });
+    platform::set_keep(config.keep_open);
     let paused = Arc::new(AtomicBool::new(false));
     let clipboard = platform::start_watcher(sender.clone(), paused.clone())?;
     let manager = GlobalHotKeyManager::new()?;
@@ -119,6 +124,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 view.update(cx, |v, cx| v.reload(cx));
                             }
                         }
+                        platform::Event::Geometry(geometry) => {
+                            let (x, y) = geometry.position.unwrap_or_default();
+                            if let Err(error) = config::Config::save(&[
+                                ("width", geometry.size.0.to_string()),
+                                ("height", geometry.size.1.to_string()),
+                                ("x", x.to_string()),
+                                ("y", y.to_string()),
+                            ]) {
+                                eprintln!("Save window size: {error}");
+                            }
+                        }
                         platform::Event::ImageLocationChanged => {
                             if let Some(view) = &view {
                                 view.update(cx, |v, cx| v.reload(cx));
@@ -152,8 +168,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                     kind: WindowKind::Normal,
                                     window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                                         point(px(0.), px(0.)),
-                                        size(px(480.), px(480.)),
+                                        size(px(config.width as f32), px(config.height as f32)),
                                     ))),
+                                    // Resizing comes from the platform layer's own frame handling;
+                                    // GPUI's resizable frame would offset the content by its borders.
                                     is_resizable: false,
                                     is_minimizable: false,
                                     ..Default::default()
@@ -167,7 +185,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                             clipboard,
                                             target,
                                             paused.clone(),
-                                            config.paste_delay_ms,
+                                            config.clone(),
                                             window,
                                             cx,
                                         )

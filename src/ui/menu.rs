@@ -1,67 +1,129 @@
-use super::{Popup, commands::Command};
+use super::{
+    Popup,
+    commands::{Command, FILE_TRANSFORMS, TEXT_TRANSFORMS},
+    rows::file_icon,
+    theme::{S3, palette},
+    widgets::keycap,
+};
+use crate::{clip::Clip, files::Kind};
 use gpui::*;
-use gpui_component::menu::{PopupMenu, PopupMenuItem};
-use gpui_component::{ActiveTheme, kbd::Kbd};
-fn item(label: &str, view: WeakEntity<Popup>, id: i64, cmd: Command) -> PopupMenuItem {
-    let key = match cmd {
-        Command::Preview => Some("space"),
-        Command::Copy => Some("ctrl-c"),
-        Command::Paste(false) => Some("enter"),
-        Command::Paste(true) => Some("shift-enter"),
-        Command::Pin => Some("ctrl-p"),
-        Command::Delete => Some("delete"),
+use gpui_component::{
+    ActiveTheme, Icon,
+    menu::{PopupMenu, PopupMenuItem},
+};
+use gpui_kit_assets::IconName;
+
+fn glyph(cmd: Command) -> IconName {
+    match cmd {
+        Command::Preview => IconName::Eye,
+        Command::OpenLocation => IconName::FolderOpen,
+        Command::OpenExternal | Command::Open => IconName::ExternalLink,
+        Command::Paste(false) | Command::PasteFile(_) => IconName::ClipboardPaste,
+        Command::Paste(true) => IconName::ClipboardType,
+        Command::Pin => IconName::Pin,
+        Command::Delete => IconName::Trash,
+        Command::Edit => IconName::Pencil,
+        Command::Copy => IconName::Copy,
+        Command::Details => IconName::Info,
+        Command::Save => IconName::Download,
+        Command::PasteImages => IconName::Images,
+        Command::Transform(t) => match t {
+            "UPPERCASE" => IconName::CaseUpper,
+            "lowercase" => IconName::CaseLower,
+            "Trim spaces" => IconName::Scissors,
+            "One line" => IconName::TextWrap,
+            "Paths as text" => IconName::TextAlignStart,
+            _ => IconName::Type,
+        },
+    }
+}
+
+fn shortcut(cmd: Command) -> Option<&'static str> {
+    match cmd {
+        Command::Preview => Some("Space"),
+        Command::Copy => Some("Ctrl+C"),
+        Command::Paste(false) => Some("Enter"),
+        Command::Paste(true) => Some("Shift+Enter"),
+        Command::Pin => Some("Ctrl+P"),
+        Command::Delete => Some("Del"),
         _ => None,
-    };
-    let glyph = match cmd {
-        Command::Paste(true) => "plain",
-        Command::Pin => "pin",
-        Command::Delete => "delete",
-        Command::Edit => "edit",
-        Command::Copy => "copy",
-        _ => "text",
-    };
-    let label = label.to_owned();
+    }
+}
+
+/// A menu row: icon column, label, and the shortcut right-aligned as a key cap.
+fn entry(
+    label: impl Into<SharedString>,
+    icon: IconName,
+    key: Option<&'static str>,
+    danger: bool,
+    on_click: impl Fn(&mut Window, &mut App) + 'static,
+) -> PopupMenuItem {
+    let label = label.into();
     PopupMenuItem::element(move |_, cx| {
+        let p = palette(cx);
         div()
             .flex()
             .items_center()
             .w_full()
-            .min_w(px(160.))
-            .gap_3()
-            .text_color(if matches!(cmd, Command::Delete) {
-                cx.theme().danger
+            .gap(S3)
+            .text_color(if danger {
+                p.danger
             } else {
                 cx.theme().foreground
             })
-            .child(div().flex_1().child(label.clone()))
-            .children(key.map(|key| Kbd::new(Keystroke::parse(key).unwrap())))
+            .child(div().flex_1().truncate().child(label.clone()))
+            .children(key.map(|key| keycap(key, p)))
     })
-    .icon(super::rows::icon(glyph))
-    .on_click(move |_, window, cx| {
-        let _ = view.update(cx, |this, cx| this.command(id, cmd, window, cx));
-    })
+    .icon(Icon::new(icon))
+    .on_click(move |_, window, cx| on_click(window, cx))
 }
+
+fn item(
+    label: impl Into<SharedString>,
+    view: WeakEntity<Popup>,
+    id: i64,
+    cmd: Command,
+) -> PopupMenuItem {
+    entry(
+        label,
+        glyph(cmd),
+        shortcut(cmd),
+        cmd == Command::Delete,
+        move |window, cx| {
+            let _ = view.update(cx, |this, cx| this.command(id, cmd, window, cx));
+        },
+    )
+}
+
 pub(super) fn build(
     mut menu: PopupMenu,
     view: WeakEntity<Popup>,
     id: i64,
-    clip: &crate::clip::Clip,
+    clip: &Clip,
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    menu = menu.min_w(px(220.)).max_w(px(230.)).item(item(
+    let media = matches!(clip.kind.as_str(), "image" | "files");
+    menu = menu.min_w(px(232.)).max_w(px(280.)).item(item(
         "Preview",
         view.clone(),
         id,
         Command::Preview,
     ));
-    if matches!(clip.kind.as_str(), "image" | "files") {
-        menu = menu.item(item(
-            "Show in folder",
-            view.clone(),
-            id,
-            Command::OpenLocation,
-        ));
+    if media {
+        menu = menu
+            .item(item(
+                "Show in folder",
+                view.clone(),
+                id,
+                Command::OpenLocation,
+            ))
+            .item(item(
+                "Open in default app",
+                view.clone(),
+                id,
+                Command::OpenExternal,
+            ));
     }
     menu = menu
         .separator()
@@ -76,42 +138,174 @@ pub(super) fn build(
             .disabled(!clip.is_text()),
         );
     let subview = view.clone();
-    let kind = clip.kind.clone();
+    let clip_for_sub = clip.clone();
     menu = menu
-        .submenu("Paste as…", window, cx, move |mut sub, _, _| {
-            if kind == "image" {
-                sub = sub.item(item("Save as file…", subview.clone(), id, Command::Save));
-            } else if kind == "link" {
-                sub = sub.item(item("Open in browser", subview.clone(), id, Command::Open));
-            } else if matches!(kind.as_str(), "text" | "email") {
-                for transform in ["UPPERCASE", "lowercase", "Trim spaces", "One line"] {
-                    sub = sub.item(item(
-                        transform,
-                        subview.clone(),
-                        id,
-                        Command::Transform(transform),
-                    ));
-                }
-            } else {
-                sub = sub.item(PopupMenuItem::new("Use Paste to copy files").disabled(true));
-            }
-            sub.min_w(px(200.)).max_w(px(220.))
-        })
+        .submenu_with_icon(
+            Some(Icon::new(IconName::WandSparkles)),
+            "Paste as…",
+            window,
+            cx,
+            move |sub, window, cx| paste_as(sub, subview.clone(), &clip_for_sub, window, cx),
+        )
         .separator()
-        .item(item(
-            if clip.pinned { "Unpin" } else { "Pin" },
-            view.clone(),
-            id,
-            Command::Pin,
-        ))
+        .item(
+            item(
+                if clip.pinned { "Unpin" } else { "Pin" },
+                view.clone(),
+                id,
+                Command::Pin,
+            )
+            .icon(Icon::new(if clip.pinned {
+                IconName::PinOff
+            } else {
+                IconName::Pin
+            })),
+        )
         .item(item("Edit", view.clone(), id, Command::Edit).disabled(!clip.is_text()))
         .separator()
         .item(item("Delete", view.clone(), id, Command::Delete))
         .separator();
-    menu.submenu("More", window, cx, move |sub, _, _| {
-        sub.min_w(px(200.))
-            .max_w(px(220.))
-            .item(item("Copy to clipboard", view.clone(), id, Command::Copy))
-            .item(item("Clip details", view.clone(), id, Command::Details))
-    })
+    menu.submenu_with_icon(
+        Some(Icon::new(IconName::Ellipsis)),
+        "More",
+        window,
+        cx,
+        move |sub, _, _| {
+            sub.min_w(px(220.))
+                .item(item("Copy to clipboard", view.clone(), id, Command::Copy))
+                .item(item("Details", view.clone(), id, Command::Details))
+        },
+    )
+}
+
+fn paste_as(
+    mut sub: PopupMenu,
+    view: WeakEntity<Popup>,
+    clip: &Clip,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let id = clip.id;
+    sub = sub.min_w(px(220.)).max_w(px(300.));
+    match clip.kind.as_str() {
+        "image" => sub.item(item("Save as file…", view, id, Command::Save)),
+        "link" => sub.item(item("Open in browser", view, id, Command::Open)),
+        "files" => {
+            for transform in FILE_TRANSFORMS {
+                sub = sub.item(item(
+                    transform,
+                    view.clone(),
+                    id,
+                    Command::Transform(transform),
+                ));
+            }
+            let kinds = clip.file_kinds();
+            let images = kinds.iter().filter(|k| **k == Kind::Image).count();
+            if images > 0 && images < kinds.len() {
+                sub = sub.item(item(
+                    format!("Only the images ({images})"),
+                    view.clone(),
+                    id,
+                    Command::PasteImages,
+                ));
+            }
+            if kinds.len() > 1 {
+                let paths: Vec<(String, Kind)> = clip
+                    .paths()
+                    .iter()
+                    .zip(kinds)
+                    .take(40)
+                    .map(|(p, k)| (crate::files::name(p).to_owned(), k))
+                    .collect();
+                let more = clip.file_count.saturating_sub(paths.len());
+                sub = sub.separator().submenu_with_icon(
+                    Some(Icon::new(IconName::Files)),
+                    "One file",
+                    window,
+                    cx,
+                    move |mut files, _, _| {
+                        files = files.min_w(px(200.)).max_w(px(320.)).scrollable(true);
+                        for (ix, (name, kind)) in paths.iter().enumerate() {
+                            let view = view.clone();
+                            files = files.item(entry(
+                                name.clone(),
+                                file_icon(*kind),
+                                None,
+                                false,
+                                move |window, cx| {
+                                    let _ = view.update(cx, |this, cx| {
+                                        this.command(id, Command::PasteFile(ix), window, cx)
+                                    });
+                                },
+                            ));
+                        }
+                        if more > 0 {
+                            files = files.item(
+                                PopupMenuItem::new(format!("{more} more in Preview"))
+                                    .disabled(true),
+                            );
+                        }
+                        files
+                    },
+                );
+            }
+            sub
+        }
+        _ => {
+            for transform in TEXT_TRANSFORMS {
+                sub = sub.item(item(
+                    transform,
+                    view.clone(),
+                    id,
+                    Command::Transform(transform),
+                ));
+            }
+            sub
+        }
+    }
+}
+
+/// The header's menu: list density, keep open, settings file.
+pub(super) fn header(menu: PopupMenu, view: WeakEntity<Popup>, popup: &Popup) -> PopupMenu {
+    let compact = popup.compact();
+    let keep = popup.config.keep_open;
+    let density = |label: &'static str, on: bool| {
+        let view = view.clone();
+        PopupMenuItem::new(label)
+            .checked(on)
+            .on_click(move |_, _, cx| {
+                let _ = view.update(cx, |this, cx| {
+                    if this.compact() != (label == "Compact") {
+                        this.toggle_density(cx);
+                    }
+                });
+            })
+    };
+    let keep_view = view.clone();
+    menu.min_w(px(232.))
+        .item(PopupMenuItem::label("List density"))
+        .item(density("Comfortable", !compact))
+        .item(density("Compact", compact))
+        .separator()
+        .item(
+            PopupMenuItem::new("Keep open on top")
+                .checked(keep)
+                .on_click(move |_, window, cx| {
+                    let _ = keep_view.update(cx, |this, cx| this.toggle_keep(window, cx));
+                }),
+        )
+        .separator()
+        .item(entry(
+            "Open settings file",
+            IconName::Settings2,
+            None,
+            false,
+            |_, _| {
+                if let Ok(dir) = crate::config::directory()
+                    && let Err(error) = crate::platform::open_settings(&dir.join("config.toml"))
+                {
+                    eprintln!("Settings: {error}");
+                }
+            },
+        ))
 }

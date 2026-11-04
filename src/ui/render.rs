@@ -1,103 +1,307 @@
-use super::Popup;
-use gpui::prelude::FluentBuilder;
-use gpui::*;
-use gpui_component::{
-    ActiveTheme,
-    button::{Button, ButtonVariants},
-    input::{Input, Textarea},
+use super::{
+    Popup,
+    popup::{FILTERS, Status, View},
+    theme::{LABEL, META, Palette, RADIUS, S1, S2, S3, palette},
+    widgets::{icon, icon_button, keycap},
 };
+use gpui::{prelude::FluentBuilder, *};
+use gpui_component::{ActiveTheme, input::Input, menu::PopupMenu};
+use gpui_kit_assets::IconName;
 use std::sync::atomic::Ordering;
+
+/// Rough text widths for fitting footer hints on one line without measuring.
+fn hint_width(key: &str, label: &str) -> f32 {
+    key.chars().count() as f32 * 6.5 + 10. + 4. + label.chars().count() as f32 * 6.4
+}
+
+fn status_line(name: IconName, text: String, color: Hsla, p: Palette) -> Div {
+    div()
+        .flex_none()
+        .h(px(28.))
+        .px(S3)
+        .flex()
+        .items_center()
+        .gap(S2)
+        .border_t_1()
+        .border_color(p.hairline)
+        .bg(p.well)
+        .text_size(META)
+        .text_color(color)
+        .child(icon(name, px(14.), color))
+        .child(div().flex_1().min_w_0().truncate().child(text))
+}
+
+impl Popup {
+    fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let p = palette(cx);
+        let keep = self.config.keep_open;
+        let focused = self.input.read(cx).focus_handle(cx).is_focused(window);
+        let search = div()
+            .flex_1()
+            .min_w_0()
+            .h(px(32.))
+            .pl(S2)
+            .flex()
+            .items_center()
+            .rounded(RADIUS)
+            .bg(p.well)
+            .border_1()
+            .border_color(if focused { p.border } else { p.well })
+            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                if event.button != MouseButton::Left {
+                    return;
+                }
+                this.mode.search();
+                crate::platform::mouse_mode(window, false, this.target);
+                this.activate(window, cx);
+                this.input.update(cx, |s, cx| s.focus(window, cx));
+            }))
+            .child(icon(IconName::Search, px(16.), p.muted))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(Input::new(&self.input).appearance(false)),
+            );
+        let keep_button = icon_button(
+            "keep-open",
+            IconName::PictureInPicture2,
+            if keep {
+                "Keep open on top: on"
+            } else {
+                "Keep open on top"
+            },
+            px(32.),
+            p,
+        )
+        .when(keep, |el| el.bg(p.selected).text_color(p.text))
+        .on_click(cx.listener(|this, _, window, cx| this.toggle_keep(window, cx)));
+        let menu_button = icon_button("menu", IconName::Ellipsis, "View options", px(32.), p)
+            .on_click(cx.listener(|this, _, window, cx| {
+                let view = cx.entity().downgrade();
+                let menu = PopupMenu::build(window, cx, {
+                    let view = view.clone();
+                    move |menu, _, cx| {
+                        let Some(popup) = view.upgrade() else {
+                            return menu;
+                        };
+                        super::menu::header(menu, view.clone(), popup.read(cx))
+                    }
+                });
+                let width = window.viewport_size().width;
+                this.open_menu(
+                    menu,
+                    point(width - S3, px(48.)),
+                    Anchor::TopRight,
+                    window,
+                    cx,
+                );
+            }));
+        let close = icon_button("close", IconName::X, "Close", px(32.), p)
+            .on_click(cx.listener(|_, _, window, _| crate::platform::hide_popup(window)));
+        let chips = FILTERS.into_iter().enumerate().map(|(ix, label)| {
+            let on = ix == self.filter;
+            div()
+                .id(("filter", ix))
+                .role(Role::Tab)
+                .aria_label(label)
+                .h(px(24.))
+                .px(S2)
+                .flex()
+                .items_center()
+                .gap(S1)
+                .rounded_full()
+                .border_1()
+                .text_size(META)
+                .cursor_pointer()
+                .when(on, |el| {
+                    el.bg(p.chip)
+                        .border_color(p.chip)
+                        .text_color(p.on_chip)
+                        .font_weight(FontWeight::MEDIUM)
+                })
+                .when(!on, |el| {
+                    el.border_color(p.border)
+                        .text_color(p.secondary)
+                        .hover(|s| s.bg(p.hover).text_color(p.text))
+                })
+                .when(label == "Pinned", |el| {
+                    el.child(icon(
+                        IconName::Pin,
+                        px(12.),
+                        if on { p.on_chip } else { p.secondary },
+                    ))
+                })
+                .child(label)
+                .on_click(cx.listener(move |this, _, _, cx| this.set_filter(ix, cx)))
+        });
+        // Kept open, the empty end of the chip row moves the window.
+        let drag = div()
+            .id("drag")
+            .flex_1()
+            .h(px(24.))
+            .flex()
+            .items_center()
+            .justify_end()
+            .when(keep, |el| {
+                el.window_control_area(WindowControlArea::Drag).child(icon(
+                    IconName::GripHorizontal,
+                    px(16.),
+                    p.muted,
+                ))
+            });
+        div()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap(S2)
+            .px(S3)
+            .pt(S3)
+            .pb(S2)
+            .border_b_1()
+            .border_color(p.hairline)
+            .child(
+                div().flex().items_center().gap(S2).child(search).child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .child(keep_button)
+                        .child(menu_button)
+                        .child(close),
+                ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(S1)
+                    .children(chips)
+                    .child(drag),
+            )
+    }
+
+    fn list_body(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        if self.clips.is_empty() {
+            let searching = !self.input.read(cx).value().is_empty();
+            return div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap(S2)
+                .child(icon(
+                    if searching {
+                        IconName::SearchX
+                    } else {
+                        IconName::ClipboardList
+                    },
+                    px(24.),
+                    p.muted,
+                ))
+                .child(
+                    div()
+                        .text_size(META)
+                        .text_color(p.secondary)
+                        .child(if searching {
+                            "No clips match your search"
+                        } else if self.filter > 0 {
+                            "Nothing here yet"
+                        } else {
+                            "Copy something to start your history"
+                        }),
+                )
+                .into_any_element();
+        }
+        let entity = cx.entity();
+        list(self.list.clone(), move |ix, window, cx| {
+            // List items lay out at their content width; give every row the full width.
+            div()
+                .w_full()
+                .px(S1)
+                .child(entity.update(cx, |this, cx| this.row(ix, window, cx)))
+                .into_any_element()
+        })
+        .flex_1()
+        .w_full()
+        .min_h_0()
+        .pb(S1)
+        .into_any_element()
+    }
+
+    fn footer(&self, window: &Window, p: Palette) -> Div {
+        // Show as many hints as fit, most important first, spread across the line.
+        let mut room = f32::from(window.viewport_size().width) - 24.;
+        let mut hints = vec![];
+        for (key, label) in self.hints() {
+            let width = hint_width(key, label) + if hints.is_empty() { 0. } else { 16. };
+            if width > room {
+                break;
+            }
+            room -= width;
+            hints.push((*key, *label));
+        }
+        let spread = hints.len() > 2;
+        div()
+            .flex_none()
+            .h(px(32.))
+            .px(S3)
+            .flex()
+            .items_center()
+            .when(spread, |el| el.justify_between())
+            .when(!spread, |el| el.gap(S3))
+            .overflow_hidden()
+            .border_t_1()
+            .border_color(p.hairline)
+            .text_size(LABEL)
+            .text_color(p.muted)
+            .children(hints.into_iter().map(|(key, label)| {
+                div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(S1)
+                    .child(keycap(key, p))
+                    .child(label)
+            }))
+    }
+}
+
 impl Render for Popup {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = palette(cx);
         let border = if cx.theme().is_dark() {
-            0x454542
+            0x4a4a47
         } else {
-            0xe5e4e0
+            0xd6d5d0
         };
         let native = crate::platform::native_border(window, border);
-        let entity = cx.entity();
-        let content = if let Some(preview) = &self.preview {
-            div()
-                .id("preview")
-                .flex_1()
-                .min_h_0()
-                .p_3()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(
-                    div()
-                        .id("preview-text")
-                        .overflow_y_scroll()
-                        .flex_1()
-                        .min_h_0()
-                        .text_sm()
-                        .child(preview.clone()),
-                )
-                .child(
-                    div()
-                        .id("close-preview")
-                        .cursor_pointer()
-                        .child("Close preview · Space / Esc")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.preview = None;
-                            this.preview_id = None;
-                            cx.notify();
-                        })),
-                )
-                .into_any_element()
-        } else if let Some((_, editor)) = &self.editor {
+        let content = if matches!(self.view, View::List) {
             div()
                 .flex_1()
                 .min_h_0()
-                .p_3()
                 .flex()
                 .flex_col()
-                .gap_2()
-                .child("Edit clip")
-                .child(Textarea::new(editor).h_full())
-                .child(
-                    div()
-                        .id("save")
-                        .p_2()
-                        .cursor_pointer()
-                        .child("Save · Ctrl+S")
-                        .on_click(cx.listener(|this, _, window, cx| this.save_edit(window, cx))),
-                )
-                .into_any_element()
-        } else if let Some(details) = &self.details {
-            div()
-                .flex_1()
-                .p_3()
-                .text_sm()
-                .child(details.clone())
-                .child(div().child("Esc to return"))
-                .into_any_element()
-        } else if self.clips.is_empty() {
-            div()
-                .flex_1()
-                .p_4()
-                .text_color(cx.theme().muted_foreground)
-                .child("No clips found")
+                .child(self.header(window, cx))
+                .child(self.list_body(cx))
                 .into_any_element()
         } else {
-            list(self.list.clone(), move |ix, window, cx| {
-                entity.update(cx, |this, cx| this.row(ix, window, cx))
-            })
-            .flex_1()
-            .w_full()
-            .min_h_0()
-            .into_any_element()
+            self.subview(window, cx)
         };
+        let skipped = self.store.borrow().skipped;
+        let paused = self.paused.load(Ordering::SeqCst);
         div()
             .size_full()
             .flex()
             .flex_col()
             .overflow_hidden()
+            .track_focus(&self.focus)
             .when(!native, |el| el.border_1())
-            .border_color(cx.theme().border)
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground)
+            .border_color(p.border)
+            .bg(p.surface)
+            .text_color(p.text)
+            .text_size(super::theme::TITLE)
             .capture_key_down(cx.listener(Self::key))
             .capture_action(
                 cx.listener(|this, _: &gpui_component::input::Copy, window, cx| {
@@ -114,104 +318,47 @@ impl Render for Popup {
                     this.cycle_filter(true, window, cx)
                 },
             ))
-            .child(
-                div()
-                    .flex()
-                    .px_3()
-                    .pt_2()
-                    .pb_2()
-                    .child(
-                        div()
-                            .flex_1()
-                            .capture_any_mouse_down(cx.listener(
-                                |this, event: &MouseDownEvent, window, cx| {
-                                    if event.button != MouseButton::Left {
-                                        return;
-                                    }
-                                    this.mode.search();
-                                    crate::platform::mouse_mode(window, false, this.target);
-                                    window.activate_window();
-                                    this.input.update(cx, |s, cx| s.focus(window, cx));
-                                },
-                            ))
-                            .child(Input::new(&self.input)),
-                    )
-                    .child(
-                        Button::new("close")
-                            .ghost()
-                            .compact()
-                            .label("×")
-                            .accessibility_label("Close popup")
-                            .on_click(
-                                cx.listener(|_, _, window, _| crate::platform::hide_popup(window)),
-                            ),
-                    ),
-            )
-            .child(
-                div().flex().gap_1().px_3().pb_2().children(
-                    ["All", "Links", "Images", "Text", "Pinned"]
-                        .into_iter()
-                        .enumerate()
-                        .map(|(ix, label)| {
-                            div()
-                                .id(("filter", ix))
-                                .px_2()
-                                .py_1()
-                                .rounded_full()
-                                .text_xs()
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .bg(if ix == self.filter {
-                                    cx.theme().foreground
-                                } else {
-                                    cx.theme().background
-                                })
-                                .text_color(if ix == self.filter {
-                                    cx.theme().background
-                                } else {
-                                    cx.theme().muted_foreground
-                                })
-                                .cursor_pointer()
-                                .child(label)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.filter = ix;
-                                    this.selected = 0;
-                                    this.reload(cx);
-                                }))
-                        }),
-                ),
-            )
-            .children(self.paused.load(Ordering::SeqCst).then(|| {
-                div()
-                    .px_3()
-                    .py_1()
-                    .bg(cx.theme().accent)
-                    .text_color(cx.theme().accent_foreground)
-                    .text_sm()
-                    .child("Recording paused · resume from the tray")
-            }))
             .child(content)
-            .children(self.error.clone().map(|e| {
-                div()
-                    .px_3()
-                    .text_xs()
-                    .text_color(cx.theme().danger)
-                    .child(e)
+            .children(paused.then(|| {
+                status_line(
+                    IconName::Pause,
+                    "Recording paused · resume from the tray".into(),
+                    p.secondary,
+                    p,
+                )
             }))
-            .child(Self::footer(cx))
-            .children((self.store.borrow().skipped > 0).then(|| {
-                div().px_3().pb_2().text_xs().child(format!(
-                    "Skipped {} large clips",
-                    self.store.borrow().skipped
-                ))
+            .children((skipped > 0).then(|| {
+                status_line(
+                    IconName::Info,
+                    format!(
+                        "Skipped {skipped} large {} · raise max_clip_mb in settings",
+                        if skipped == 1 { "clip" } else { "clips" }
+                    ),
+                    p.secondary,
+                    p,
+                )
             }))
-            // Reserve horizontal room for the second menu inside the 480px popup.
-            .children(self.context_menu.as_ref().map(|(menu, y)| {
+            .children(self.status.as_ref().map(|status| {
+                let (name, text, color) = match status {
+                    Status::Info(text) => (IconName::Info, text.clone(), p.secondary),
+                    Status::Error(text) => (IconName::CircleAlert, text.clone(), p.danger),
+                };
+                status_line(name, text, color, p)
+                    .id("status")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.status = None;
+                        cx.notify();
+                    }))
+            }))
+            .child(self.footer(window, p))
+            .children(self.menu.as_ref().map(|menu| {
                 deferred(
                     anchored()
-                        .position(point(px(8.), *y))
-                        .snap_to_window_with_margin(px(8.))
-                        .child(menu.clone()),
+                        .anchor(menu.corner)
+                        .position(menu.position)
+                        .snap_to_window_with_margin(S2)
+                        .child(menu.entity.clone()),
                 )
             }))
     }

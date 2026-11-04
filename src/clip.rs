@@ -95,9 +95,40 @@ impl Clip {
             "Earlier"
         }
     }
-    pub fn meta(&self) -> String {
+    pub fn paths(&self) -> Vec<&str> {
+        if self.kind == "files" {
+            self.text.lines().collect()
+        } else {
+            vec![]
+        }
+    }
+    pub fn file_kinds(&self) -> Vec<crate::files::Kind> {
+        crate::files::kinds(&self.paths(), &self.file_kinds)
+    }
+    /// The row title and, for several files, their names as a quieter suffix.
+    pub fn title(&self) -> (String, Option<String>) {
+        match self.kind.as_str() {
+            "image" if !self.screenshot_title.is_empty() => {
+                (format!("Screenshot of {}", self.screenshot_title), None)
+            }
+            "image" => ("Image".into(), None),
+            "files" => crate::files::title(&self.paths()),
+            _ => (
+                self.text
+                    .lines()
+                    .map(str::trim)
+                    .find(|l| !l.is_empty())
+                    .unwrap_or("")
+                    .chars()
+                    .take(180)
+                    .collect(),
+                None,
+            ),
+        }
+    }
+    pub fn age(&self) -> String {
         let seconds = now().saturating_sub(self.updated);
-        let age = if seconds < 60 {
+        if seconds < 60 {
             "just now".into()
         } else if seconds < 3600 {
             format!("{} min ago", seconds / 60)
@@ -105,18 +136,23 @@ impl Clip {
             format!("{} h ago", seconds / 3600)
         } else {
             format!("{} d ago", seconds / 86400)
-        };
+        }
+    }
+    /// The compact row's right-aligned time: "now", "2m", "3h", "4d".
+    pub fn short_age(&self) -> String {
+        let seconds = now().saturating_sub(self.updated);
+        match seconds {
+            ..60 => "now".into(),
+            60..3600 => format!("{}m", seconds / 60),
+            3600..86400 => format!("{}h", seconds / 3600),
+            _ => format!("{}d", seconds / 86400),
+        }
+    }
+    /// "1440×900 · Snipping Tool · 9 min ago", "3 images · 1 PDF · Orca · 2 min ago".
+    pub fn meta(&self) -> String {
         let prefix = match self.kind.as_str() {
             "image" => format!("{} · ", self.text),
-            "files" => format!(
-                "{} {} · ",
-                self.file_count,
-                if self.file_count == 1 {
-                    "file"
-                } else {
-                    "files"
-                }
-            ),
+            "files" => format!("{} · ", crate::files::breakdown(&self.file_kinds())),
             _ => String::new(),
         };
         let copied = if self.copies > 1 {
@@ -124,18 +160,45 @@ impl Clip {
         } else {
             String::new()
         };
-        let title = if self.screenshot_title.is_empty() {
-            String::new()
-        } else {
-            format!("Screenshot of {} · ", self.screenshot_title)
-        };
-        format!("{title}{prefix}{} · {age}{copied}", self.source)
+        format!("{prefix}{} · {}{copied}", self.source, self.age())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn titles_and_meta_by_kind() {
+        let mut c = Clip::text("\n  first line\nsecond".into(), "Notepad".into());
+        assert_eq!(c.title(), ("first line".into(), None));
+        assert_eq!(c.meta(), "Notepad · just now");
+        c.copies = 3;
+        assert_eq!(c.meta(), "Notepad · just now · copied 3×");
+        c.kind = "image".into();
+        c.text = "1440×900".into();
+        c.copies = 1;
+        assert_eq!(c.title().0, "Image");
+        assert_eq!(c.meta(), "1440×900 · Notepad · just now");
+        c.screenshot_title = "Ditto".into();
+        assert_eq!(c.title().0, "Screenshot of Ditto");
+        c.kind = "files".into();
+        c.text = ["ui.png", "notes.pdf", "demo.mp4", "a.jpg", "b.png"]
+            .map(|n| format!("C:/p/{n}"))
+            .join("\n");
+        c.source = "Orca".into();
+        c.updated -= 150;
+        assert_eq!(
+            c.title(),
+            (
+                "5 files".into(),
+                Some("ui.png, notes.pdf, demo.mp4 +2".into())
+            )
+        );
+        assert_eq!(c.meta(), "3 images · 1 video · 1 PDF · Orca · 2 min ago");
+        assert_eq!(c.short_age(), "2m");
+        c.updated -= 7200;
+        assert_eq!(c.short_age(), "2h");
+    }
     #[test]
     fn detects_types() {
         for (s, t) in [

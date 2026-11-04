@@ -33,15 +33,16 @@ pub fn current_id() -> Option<i64> {
         .then(|| CURRENT.load(Ordering::SeqCst))
         .filter(|id| *id > 0)
 }
-fn changed() {
+pub(super) fn send(event: Event) {
     if let Some(sender) = EVENTS.get() {
-        let _ = sender.send_blocking(Event::ClipboardChanged);
+        let _ = sender.send_blocking(event);
     }
 }
+fn changed() {
+    send(Event::ClipboardChanged);
+}
 pub fn paste_sent(id: i64, hash: Vec<u8>, plain: bool) {
-    if let Some(sender) = EVENTS.get() {
-        let _ = sender.send_blocking(Event::PasteSent { id, hash, plain });
-    }
+    send(Event::PasteSent { id, hash, plain });
 }
 thread_local! { static SENDER: RefCell<Option<async_channel::Sender<Event>>> = const { RefCell::new(None) }; }
 thread_local! { static PAUSED: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) }; }
@@ -135,15 +136,8 @@ fn read(owner: HWND) -> Result<Option<Event>> {
             let sender = SENDER.with(|s| s.borrow().clone());
             // Shell extensions may block; never hold the clipboard or its message loop.
             thread::spawn(move || {
-                if clip.kind == "files"
-                    && !matches!(
-                        super::preview::file_type(clip.text.lines().next().unwrap_or("")),
-                        super::preview::FileType::Other
-                    )
-                {
-                    clip.thumbnail =
-                        super::preview::thumbnail(clip.text.lines().next().unwrap_or(""), 96)
-                            .unwrap_or_default();
+                if clip.kind == "files" {
+                    super::preview::summarize_files(&mut clip);
                 }
                 if let Some(sender) = sender {
                     let _ = sender.send_blocking(Event::Clip {
@@ -176,6 +170,20 @@ unsafe fn put(id: u32, data: &[u8]) -> Result<()> {
 }
 
 impl Clipboard {
+    /// Puts a subset of a file clip on the clipboard, as Explorer's copy would.
+    pub fn write_files(self, paths: &[&str]) -> Result<()> {
+        let own = format(&marker())?;
+        let effect = format("Preferred DropEffect")?;
+        let _guard = open(HWND(self.0 as *mut _))?;
+        unsafe {
+            EmptyClipboard()?;
+            put(own, &1u32.to_le_bytes())?;
+            put(effect, &1u32.to_le_bytes())?;
+            put(15, &crate::files::hdrop(paths))?;
+        }
+        changed();
+        Ok(())
+    }
     pub fn write(self, text: &str) -> Result<()> {
         let wide: Vec<u8> = text
             .encode_utf16()

@@ -1,6 +1,9 @@
 mod frame;
 pub mod preview;
-pub use frame::{mouse_mode, native_border, visible};
+pub use frame::{
+    Geometry, keep, mouse_mode, native_border, rect, save_bounds, set_geometry, set_keep, set_rect,
+    visible,
+};
 mod capture;
 mod clipboard;
 mod focus;
@@ -12,12 +15,13 @@ mod placement;
 mod source;
 mod time;
 mod tray;
-pub use time::is_today;
+pub use time::{is_today, when};
 
 pub use clipboard::paste_sent;
 pub use clipboard::{Clipboard, start_watcher};
 pub use clipboard::{current_id, set_current};
 pub use focus::{Target, configure_popup, hide_popup};
+pub use foreground::last_app;
 pub use instance::Instance;
 pub use tray::{open_external, open_settings};
 
@@ -28,6 +32,7 @@ pub enum Event {
         plain: bool,
     },
     ImageLocationChanged,
+    Geometry(Geometry),
     ClipboardChanged,
     Clip {
         clip: Box<crate::clip::Clip>,

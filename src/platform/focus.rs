@@ -128,9 +128,20 @@ pub fn configure_popup(window: &gpui::Window) {
                 GWL_EXSTYLE,
                 (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize),
             );
+            // Resizing stays available; maximize/minimize do not apply to the popup.
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            SetWindowLongPtrW(
+                hwnd,
+                GWL_STYLE,
+                (style | WS_THICKFRAME.0 as isize)
+                    & !((WS_MAXIMIZEBOX.0 | WS_MINIMIZEBOX.0) as isize),
+            );
+            let geometry = super::frame::geometry();
+            let remembered = geometry.position.filter(|_| super::frame::keep());
             let mut cursor = POINT::default();
             let _ = GetCursorPos(&mut cursor);
-            let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+            let anchor = remembered.map_or(cursor, |(x, y)| POINT { x, y });
+            let monitor = MonitorFromPoint(anchor, MONITOR_DEFAULTTONEAREST);
             let mut info = MONITORINFO {
                 cbSize: std::mem::size_of::<MONITORINFO>() as u32,
                 ..Default::default()
@@ -142,24 +153,28 @@ pub fn configure_popup(window: &gpui::Window) {
             let mut dy = 96;
             let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
             let r = info.rcWork;
-            let placement = super::placement::clamp(
-                (cursor.x, cursor.y),
-                (480 * dx as i32 / 96, 480 * dy as i32 / 96),
-                super::placement::Rect {
-                    left: r.left,
-                    top: r.top,
-                    right: r.right,
-                    bottom: r.bottom,
-                },
+            let work = super::placement::Rect {
+                left: r.left,
+                top: r.top,
+                right: r.right,
+                bottom: r.bottom,
+            };
+            let size = (
+                geometry.size.0 as i32 * dx as i32 / 96,
+                geometry.size.1 as i32 * dy as i32 / 96,
             );
-            let _ = SetWindowPos(
+            let placement = match remembered {
+                Some(origin) => super::placement::fit(origin, size, work),
+                None => super::placement::clamp((cursor.x, cursor.y), size, work),
+            };
+            super::frame::place(
                 hwnd,
-                Some(HWND_TOPMOST),
-                placement.left,
-                placement.top,
-                placement.right - placement.left,
-                placement.bottom - placement.top,
-                SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                RECT {
+                    left: placement.left,
+                    top: placement.top,
+                    right: placement.right,
+                    bottom: placement.bottom,
+                },
             );
         }
     }
