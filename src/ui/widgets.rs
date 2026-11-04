@@ -4,6 +4,26 @@ use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{Icon, tooltip::Tooltip};
 use gpui_kit_assets::IconName;
 
+impl super::Popup {
+    pub(super) fn keep_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let p = super::theme::palette(cx);
+        let keep = self.config.keep_open;
+        icon_button(
+            "keep-open",
+            IconName::PictureInPicture2,
+            if keep {
+                "Keep open on top: on"
+            } else {
+                "Keep open on top"
+            },
+            px(32.),
+            p,
+        )
+        .when(keep, |el| el.bg(p.selected).text_color(p.text))
+        .on_click(cx.listener(|this, _, window, cx| this.toggle_keep(window, cx)))
+    }
+}
+
 pub(super) fn icon(name: IconName, size: Pixels, color: Hsla) -> Icon {
     Icon::new(name).size(size).text_color(color)
 }

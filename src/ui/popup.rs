@@ -192,6 +192,12 @@ impl Popup {
             platform::hide_popup(window);
             return;
         }
+        if platform::visible(window) {
+            self.mode.search();
+            platform::mouse_mode(window, false, self.target);
+            self.activate(window, cx);
+            return;
+        }
         self.mode = super::mode::Mode::opened(mouse);
         if !target.is_app() {
             self.target = target;

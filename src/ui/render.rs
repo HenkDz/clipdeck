@@ -34,7 +34,6 @@ fn status_line(name: IconName, text: String, color: Hsla, p: Palette) -> Div {
 impl Popup {
     fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let p = palette(cx);
-        let keep = self.config.keep_open;
         let focused = self.input.read(cx).focus_handle(cx).is_focused(window);
         let search = div()
             .flex_1()
@@ -63,19 +62,7 @@ impl Popup {
                     .min_w_0()
                     .child(Input::new(&self.input).appearance(false)),
             );
-        let keep_button = icon_button(
-            "keep-open",
-            IconName::PictureInPicture2,
-            if keep {
-                "Keep open on top: on"
-            } else {
-                "Keep open on top"
-            },
-            px(32.),
-            p,
-        )
-        .when(keep, |el| el.bg(p.selected).text_color(p.text))
-        .on_click(cx.listener(|this, _, window, cx| this.toggle_keep(window, cx)));
+        let keep_button = self.keep_button(cx);
         let menu_button = icon_button("menu", IconName::Ellipsis, "View options", px(32.), p)
             .on_click(cx.listener(|this, _, window, cx| {
                 let view = cx.entity().downgrade();
@@ -130,7 +117,7 @@ impl Popup {
                 .child(label)
                 .on_click(cx.listener(move |this, _, _, cx| this.set_filter(ix, cx)))
         });
-        // Kept open, the empty end of the chip row moves the window.
+        // The empty end of the chip row moves the window.
         let drag = div()
             .id("drag")
             .flex_1()
@@ -138,13 +125,8 @@ impl Popup {
             .flex()
             .items_center()
             .justify_end()
-            .when(keep, |el| {
-                el.window_control_area(WindowControlArea::Drag).child(icon(
-                    IconName::GripHorizontal,
-                    px(16.),
-                    p.muted,
-                ))
-            });
+            .window_control_area(WindowControlArea::Drag)
+            .child(icon(IconName::GripHorizontal, px(16.), p.muted));
         div()
             .flex_none()
             .flex()

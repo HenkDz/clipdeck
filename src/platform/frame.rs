@@ -32,6 +32,20 @@ pub(super) fn geometry() -> Geometry {
 /// Keep-open mode: the popup survives focus loss and pastes, and its header drags it.
 pub fn set_keep(keep: bool) {
     KEEP.store(keep, Ordering::SeqCst);
+    let hwnd = HWND(POPUP.load(Ordering::SeqCst) as *mut _);
+    if !hwnd.is_invalid() {
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(if keep { HWND_TOPMOST } else { HWND_NOTOPMOST }),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
 }
 pub fn keep() -> bool {
     KEEP.load(Ordering::SeqCst)
@@ -136,13 +150,7 @@ unsafe extern "system" fn proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRE
             {
                 return LRESULT(hit as isize);
             }
-            // Drag areas exist only while kept open; GPUI reports them as captions.
-            let hit = original();
-            if hit.0 == HTCAPTION as isize && !KEEP.load(Ordering::SeqCst) {
-                LRESULT(HTCLIENT as isize)
-            } else {
-                hit
-            }
+            original()
         }
         // A caption double-click would maximize the popup.
         WM_NCLBUTTONDBLCLK if wp.0 == HTCAPTION as usize => LRESULT(0),
@@ -164,7 +172,13 @@ unsafe extern "system" fn proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRE
                 unsafe {
                     let _ = SetWindowPos(
                         h,
-                        Some(HWND_TOPMOST),
+                        Some(
+                            if KEEP.load(Ordering::SeqCst) || MOUSE.load(Ordering::SeqCst) {
+                                HWND_TOPMOST
+                            } else {
+                                HWND_NOTOPMOST
+                            },
+                        ),
                         r.left,
                         r.top,
                         r.right - r.left,

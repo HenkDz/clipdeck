@@ -94,8 +94,10 @@ impl Popup {
                 div()
                     .flex_1()
                     .min_w_0()
+                    .h_full()
+                    .window_control_area(WindowControlArea::Drag)
                     .flex()
-                    .items_baseline()
+                    .items_center()
                     .gap(S2)
                     .child(
                         div()
@@ -114,6 +116,11 @@ impl Popup {
                     })),
             )
             .child(div().flex().items_center().gap(S1).children(actions))
+            .child(self.keep_button(cx))
+            .child(
+                icon_button("close", IconName::X, "Close", px(32.), p)
+                    .on_click(cx.listener(|_, _, window, _| crate::platform::hide_popup(window))),
+            )
     }
 
     fn act(

@@ -698,3 +698,61 @@ artwork/resource change. The release remains unsigned, as v0.1.0 was.
 
 The portable Windows x64 ZIP is versioned separately from v0.1.0 and accompanied
 by SHA-256 checksums. Source and README carry the new icon and download version.
+
+## Signed portable updater and first update test (2026-11-04)
+
+v0.1.2 introduces a manual tray/Settings update check, an Updates panel with
+download progress and restart, and an optional daily check that defaults off.
+Windows WinHTTP fetches bounded HTTPS responses from GitHub release hosts.
+Windows CNG verifies detached ECDSA P-256 signatures before metadata is parsed;
+the downloaded x64 executable must match the signed size, SHA-256 and native
+version. Clipboard data is never sent. Existing crate versions remain pinned;
+no dependencies were vendored, forked or patched.
+
+The helper validates process identity, waits for a graceful exit, snapshots the
+SQLite database including committed WAL contents, and atomically replaces the
+executable. Startup confirmation follows database/GPUI initialization and precedes
+clipboard event consumption. Failed startup restores the old binary and history;
+backups and failed migrated history remain available. Another normal launch is
+blocked during the handoff. See `UPDATES.md` for publishing and recovery details.
+
+The owner's hands-on follow-up is included: v0.1.3 puts paste counts beside their
+icons, preserving their vertical centers (`screenshots/paste-count-inline.png`).
+It also fixes the duplicate Delete-button hover style that caused a debug-only
+GPUI assertion. v0.1.4 keeps a visible popup in place during a manual check;
+hidden popups still open from the tray command.
+
+v0.1.5 completes the window follow-up: subview headers and the list grip are
+draggable without requiring Keep open. Every subview has Close and Keep open
+controls. Native topmost state follows that toggle immediately, rather than being
+forced by every placement. Visible reopen signals preserve the current view and
+bounds; installing saves bounds for the incoming process to restore.
+
+Rust 1.99.1: fmt, clippy with warnings denied, **61 passed, 2 ignored**, release
+build, signed packaging and native icon verification pass. The clipboard and
+owner ShareX opt-in tests were not rerun for these updater/UI changes.
+
+| Desktop/native item | Result | How checked |
+| --- | --- | --- |
+| Signed metadata and payload rejection | PASS | Unit checks reject modified/truncated signatures, invalid versions/paths, untrusted redirects, oversized metadata, incomplete or tampered executables and wrong PE architecture. |
+| Install and concurrent launch | PASS | Native helper installed the exact final v0.1.5 release in an isolated path containing spaces and Unicode. A second normal launch exited during the handoff. New process acknowledged startup; text, PNG bytes, pinned/copy/paste/plain counters and schema v5 survived unchanged. |
+| Locked executable | PASS | Held an EXE handle without delete sharing. Replacement failed safely; the previous binary and exact fixture history remained intact. |
+| Failed startup and migration recovery | PASS | A signed failing candidate set schema v6 and deleted fixture clips, then exited. Helper restored the old EXE and schema-v5 rows/image bytes/counters, retaining the failed v6 database. |
+| Paste count alignment and debug rendering | PASS | Opened the v0.1.3 debug popup with normal/plain paste counts and row actions. Icons remain centered with counts alongside; both Updates and list views rendered without the previous hover assertion. |
+| Real GitHub update flow | PASS | Used published v0.1.2, checked signed hosted metadata, downloaded and restarted into published v0.1.3, then v0.1.4. Each installed EXE matched the exact published artifact; new process IDs acknowledged startup. Compared complete pre-install rows against live history and the helper snapshot: text, PNG bytes, pin/copy/paste/plain counters and schema v5 unchanged. Screenshots: `updater-available.png`, `updater-ready.png`, `updater-complete.png`. |
+| Published assets | PASS | Downloaded all five v0.1.2 and v0.1.4 GitHub assets again. SHA-256 values match local packages; ZIP integrity passes and its EXE matches the raw updater asset; signed manifest version, size and hash agree. |
+| Check/reopen position | PASS | Final v0.1.5 release: completed the network check and sent another instance's open signal. Updates view stayed open at exactly x=1834, y=681, width=506, height=605 throughout. `screenshots/updater-window-controls.png`. |
+| Drag and position persistence | PASS | Observed final release header move from (1313,699) to (1834,681); native window bounds and saved config agree. Automation's synthetic drag was refused by Windows focus restrictions; this movement was observed during the owner's hands-on test. |
+| Keep open and Close | PASS | Clicked the final release's header toggle: native `WS_EX_TOPMOST` changed from set to clear at unchanged bounds. Clicked Close in Updates: native enumeration found no visible popup afterward. |
+
+Native final-build evidence is retained under `target/updater-acceptance/`: success
+`9f736104`, locked `cec98ad4`, startup failure `eea5516a`. Those fixture profiles are
+separate from normal APPDATA. The internal older debug baseline exercises the
+production helper through a debug-only test entry point absent from releases.
+The published v0.1.1 has no updater and requires one manual installation.
+
+Limits: Windows executables still lack Authenticode signing; signed updater
+metadata is a separate trust mechanism. The app folder must be writable. Keep the
+Windows signing profile available: its non-exportable private key is outside the
+repository. Recovery artifacts are intentionally retained, and external database
+locks can require manual recovery using the reported files.

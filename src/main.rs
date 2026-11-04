@@ -118,6 +118,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 while let Ok(event) = receiver.recv().await {
                     cx.update(|cx| match event {
                         platform::Event::Update(action) => {
+                            if matches!(action, update::Action::Install)
+                                && let Some(handle) = popup
+                            {
+                                let _ =
+                                    handle.update(cx, |_, window, _| platform::save_bounds(window));
+                            }
                             updates.handle(action, &update_sender);
                             if matches!(action, update::Action::Check(true)) {
                                 let visible = popup.is_some_and(|handle| {

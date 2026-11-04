@@ -147,7 +147,9 @@ pub fn configure_popup(window: &gpui::Window) {
                     & !((WS_MAXIMIZEBOX.0 | WS_MINIMIZEBOX.0) as isize),
             );
             let geometry = super::frame::geometry();
-            let remembered = geometry.position.filter(|_| super::frame::keep());
+            let remembered = geometry
+                .position
+                .filter(|_| super::frame::keep() || crate::update::incoming());
             let mut cursor = POINT::default();
             let _ = GetCursorPos(&mut cursor);
             let anchor = remembered.map_or(cursor, |(x, y)| POINT { x, y });
