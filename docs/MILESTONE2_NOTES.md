@@ -744,6 +744,7 @@ owner ShareX opt-in tests were not rerun for these updater/UI changes.
 | Check/reopen position | PASS | Final v0.1.5 release: completed the network check and sent another instance's open signal. Updates view stayed open at exactly x=1834, y=681, width=506, height=605 throughout. `screenshots/updater-window-controls.png`. |
 | Drag and position persistence | PASS | Observed final release header move from (1313,699) to (1834,681); native window bounds and saved config agree. Automation's synthetic drag was refused by Windows focus restrictions; this movement was observed during the owner's hands-on test. |
 | Keep open and Close | PASS | Clicked the final release's header toggle: native `WS_EX_TOPMOST` changed from set to clear at unchanged bounds. Clicked Close in Updates: native enumeration found no visible popup afterward. |
+| Normal history and final handoff | PASS | Closed isolated fixtures and started v0.1.5 from `m2-polish/target/release/clipdeck.exe` (PID 37092) using normal APPDATA/LOCALAPPDATA. Normal config has `keep_open = false`; normal history remains schema v5 with 30 clips and `quick_check = ok`. |
 
 Native final-build evidence is retained under `target/updater-acceptance/`: success
 `9f736104`, locked `cec98ad4`, startup failure `eea5516a`. Those fixture profiles are
