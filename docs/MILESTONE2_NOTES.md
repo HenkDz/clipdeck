@@ -789,6 +789,8 @@ single-copy counts, stale/deleted members, matching group/member payloads and li
 | Single-item copy | PASS | Selected C alone and pressed Ctrl+C. Native clipboard equals its complete text, its existing row moves up with copies=2, no extra row, no paste-count change. |
 | Failed selections | PASS | Missing-file image batch and mixed text/file batch both show an explicit error. Compared native clipboard contents and every row's copy/paste counters/rank before and after: unchanged. |
 | Native clipboard integration | PASS | Explicit live test checks privacy/own-write suppression, actual text/PNG/DIB/CF_HDROP formats, stored group rehydration/replay, member and group current markers, and rejecting stale sequence markers after another clipboard write. |
+| Final release and owner history | PASS | Closed the fixture and started native version 0.1.6 from `m2-polish/target/release/clipdeck.exe` (PID 73100) with normal APPDATA/LOCALAPPDATA. Owner history remains schema v5, 30 clips, SQLite `quick_check = ok`. |
+| Published release assets | PASS | GitHub's release API reports every v0.1.6 EXE, ZIP, manifest, signature and checksum asset uploaded with the exact local SHA-256 digest and byte count. |
 
 The desktop fixture is `target/copy-acceptance-77225cc7`, isolated from the owner's
 APPDATA/LOCALAPPDATA. Desktop checks used an activated popup; the tray modifier
