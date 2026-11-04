@@ -9,7 +9,7 @@ type a few letters, press <kbd>Enter</kbd>, and the clip lands in the app you we
 Text, links, screenshots and whole file selections, searchable and one keystroke away.
 
 Native Rust on [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), stored locally in SQLite,
-with no network access and no telemetry.
+with no telemetry. Update checks use GitHub; clipboard contents stay on your PC.
 
 <p align="center">
   <img src="docs/readme/hero.png" alt="Clipdeck's popup in light and dark mode" width="900">
@@ -118,7 +118,7 @@ a selected row for the bulk actions. Search, filter changes and reopening start 
 
 ### Download
 
-Get `clipdeck-0.1.1-windows-x64.zip` from the
+Get `clipdeck-0.1.2-windows-x64.zip` from the
 [latest release](https://github.com/HenkDz/clipdeck/releases/latest), unzip it anywhere and run
 `clipdeck.exe`. There is no installer; your history and settings live in `%APPDATA%\Clipdeck`.
 
@@ -133,6 +133,19 @@ Clipdeck runs in the background with a tray icon:
 - **Left-click** the tray icon to open the popup (click again to close it).
 - **Right-click** for Open, Pause recording, Settings and Quit.
 - Starting it a second time just opens the running copy.
+
+### Updates
+
+Choose **Check for updates** from the tray menu or Settings. Clipdeck shows the new
+version and release notes, downloads and verifies it, then offers **Update and restart**.
+Daily background checks are optional and off by default. The app folder must be writable.
+
+v0.1.1 and earlier need one manual upgrade to v0.1.2 to gain the updater. Your history
+and settings remain in `%APPDATA%\Clipdeck`. Updates use a signed manifest and SHA-256
+checksums. Before replacement, Clipdeck closes and makes a consistent history backup.
+If the new version fails before startup completes, it restores the previous executable
+and history. Recovery files are kept under `%LOCALAPPDATA%\Clipdeck\updates` and beside
+the executable. Keep recovery files until the upgraded version has been checked.
 
 ### Build from source
 
@@ -152,8 +165,8 @@ The first build compiles GPUI and takes a few minutes.
 
 ## Privacy and data
 
-- Clips stay on your PC in `%APPDATA%\Clipdeck\history.db` (SQLite). Clipdeck makes no network
-  requests.
+- Clips stay on your PC in `%APPDATA%\Clipdeck\history.db` (SQLite). Network requests are
+  used for GitHub update checks and downloads; clipboard contents are never uploaded.
 - Copies marked private by their source app are never stored: the clipboard flags
   `ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory = 0` and
   `Clipboard Viewer Ignore`, which password managers set.
