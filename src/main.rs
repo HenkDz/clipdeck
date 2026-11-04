@@ -120,8 +120,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         platform::Event::Update(action) => {
                             updates.handle(action, &update_sender);
                             if matches!(action, update::Action::Check(true)) {
-                                let _ = update_sender
-                                    .send_blocking(platform::Event::Open(platform::last_app()));
+                                let visible = popup.is_some_and(|handle| {
+                                    handle
+                                        .update(cx, |_, window, _| platform::visible(window))
+                                        .unwrap_or(false)
+                                });
+                                if !visible {
+                                    let _ = update_sender
+                                        .send_blocking(platform::Event::Open(platform::last_app()));
+                                }
                                 let _ = update_sender.send_blocking(platform::Event::ShowUpdates);
                             }
                             cx.refresh_windows();
