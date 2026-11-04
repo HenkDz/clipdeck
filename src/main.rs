@@ -157,6 +157,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 view.update(cx, |v, cx| v.reload(cx));
                             }
                         }
+                        platform::Event::PasteBatch { clips, plain } => {
+                            if let Err(error) = store.borrow_mut().mark_pasted_many(&clips, plain) {
+                                eprintln!("Store paste: {error}");
+                            }
+                            if let Some(view) = &view {
+                                view.update(cx, |v, cx| v.reload(cx));
+                            }
+                        }
                         platform::Event::Geometry(geometry) => {
                             let (x, y) = geometry.position.unwrap_or_default();
                             if let Err(error) = config::Config::save(&[

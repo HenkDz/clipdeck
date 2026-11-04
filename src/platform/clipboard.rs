@@ -19,19 +19,22 @@ use windows::{
 };
 
 const TEXT: u32 = 13;
-static CURRENT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
-static SEQUENCE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static CURRENT: std::sync::Mutex<(Vec<i64>, u32)> = std::sync::Mutex::new((Vec::new(), 0));
 static EVENTS: std::sync::OnceLock<async_channel::Sender<Event>> = std::sync::OnceLock::new();
 pub fn set_current(id: i64, sequence: u32) {
-    if unsafe { GetClipboardSequenceNumber() } == sequence {
-        CURRENT.store(id, Ordering::SeqCst);
-        SEQUENCE.store(sequence, Ordering::SeqCst);
+    set_current_ids(vec![id], sequence);
+}
+fn set_current_ids(ids: Vec<i64>, sequence: u32) {
+    if unsafe { GetClipboardSequenceNumber() } == sequence
+        && let Ok(mut current) = CURRENT.lock()
+    {
+        *current = (ids.into_iter().filter(|id| *id > 0).collect(), sequence);
     }
 }
-pub fn current_id() -> Option<i64> {
-    (unsafe { GetClipboardSequenceNumber() } == SEQUENCE.load(Ordering::SeqCst))
-        .then(|| CURRENT.load(Ordering::SeqCst))
-        .filter(|id| *id > 0)
+pub fn is_current(id: i64) -> bool {
+    CURRENT
+        .lock()
+        .is_ok_and(|c| c.1 == unsafe { GetClipboardSequenceNumber() } && c.0.contains(&id))
 }
 pub(super) fn send(event: Event) {
     if let Some(sender) = EVENTS.get() {
@@ -40,6 +43,9 @@ pub(super) fn send(event: Event) {
 }
 fn changed() {
     send(Event::ClipboardChanged);
+}
+pub fn clipboard_batch_sent(clips: Vec<(i64, Vec<u8>)>, plain: bool) {
+    send(Event::PasteBatch { clips, plain });
 }
 pub fn paste_sent(id: i64, hash: Vec<u8>, plain: bool) {
     send(Event::PasteSent { id, hash, plain });
@@ -50,26 +56,67 @@ thread_local! { static PAUSED: RefCell<Option<Arc<AtomicBool>>> = const { RefCel
 #[derive(Clone, Copy)]
 pub struct Clipboard(usize);
 
-struct Open;
+static CLIPBOARD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+struct Open {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    owner: HWND,
+    opened: bool,
+}
+impl Open {
+    fn finish(mut self) -> u32 {
+        // Writes finalize the sequence at close; keep our owner lock until it is read.
+        unsafe {
+            if CloseClipboard().is_err() {
+                return 0;
+            }
+            self.opened = false;
+            let sequence = GetClipboardSequenceNumber();
+            if GetClipboardOwner().is_ok_and(|owner| owner == self.owner)
+                && GetClipboardSequenceNumber() == sequence
+            {
+                sequence
+            } else {
+                0
+            }
+        }
+    }
+}
 impl Drop for Open {
     fn drop(&mut self) {
-        unsafe {
-            let _ = CloseClipboard();
+        if self.opened {
+            unsafe {
+                let _ = CloseClipboard();
+            }
         }
     }
 }
 
 fn open(owner: HWND) -> Result<Open> {
+    // Windows permits overlapping opens for the same owner HWND, even across our threads.
+    let lock = CLIPBOARD_LOCK.lock().map_err(|_| {
+        windows::core::Error::new(
+            windows::core::HRESULT(0x80004005u32 as i32),
+            "Clipboard access lock failed",
+        )
+    })?;
     for _ in 0..10 {
         if unsafe { OpenClipboard(Some(owner)) }.is_ok() {
-            return Ok(Open);
+            return Ok(Open {
+                _lock: lock,
+                owner,
+                opened: true,
+            });
         }
         thread::sleep(Duration::from_millis(10));
     }
     unsafe {
         OpenClipboard(Some(owner))?;
     }
-    Ok(Open)
+    Ok(Open {
+        _lock: lock,
+        owner,
+        opened: true,
+    })
 }
 
 pub(super) fn format(name: &str) -> Result<u32> {
@@ -130,9 +177,10 @@ fn read(owner: HWND) -> Result<Option<Event>> {
             return Ok(None);
         }
         let captured = super::capture::read()?;
+        let sequence = GetClipboardSequenceNumber();
         drop(_guard);
         if let Some((mut clip, raw)) = captured {
-            clip.sequence = GetClipboardSequenceNumber();
+            clip.sequence = sequence;
             let sender = SENDER.with(|s| s.borrow().clone());
             // Image decoding and Shell extensions are slow; never hold the clipboard or
             // its message loop while they run.
@@ -184,36 +232,50 @@ impl Clipboard {
     pub fn write_files(self, paths: &[&str]) -> Result<()> {
         let own = format(&marker())?;
         let effect = format("Preferred DropEffect")?;
-        let _guard = open(HWND(self.0 as *mut _))?;
+        let guard = open(HWND(self.0 as *mut _))?;
         unsafe {
             EmptyClipboard()?;
             put(own, &1u32.to_le_bytes())?;
             put(effect, &1u32.to_le_bytes())?;
             put(15, &crate::files::hdrop(paths))?;
         }
+        guard.finish();
         changed();
         Ok(())
     }
-    pub fn write(self, text: &str) -> Result<()> {
+    pub fn write_clips(self, clips: &[crate::clip::Clip], plain: bool) -> Result<()> {
+        if clips.len() == 1 {
+            return self.write_clip(&clips[0], plain).map(|_| ());
+        }
+        let batch = super::batch::prepare(clips, plain).map_err(|e| {
+            windows::core::Error::new(windows::core::HRESULT(0x80070057u32 as i32), e)
+        })?;
+        let sequence = self.write_clip(&batch, plain)?;
+        set_current_ids(clips.iter().map(|c| c.id).collect(), sequence);
+        changed();
+        Ok(())
+    }
+    pub fn write(self, text: &str) -> Result<u32> {
         let wide: Vec<u8> = text
             .encode_utf16()
             .chain(Some(0))
             .flat_map(u16::to_le_bytes)
             .collect();
         let own = format(&marker())?;
-        let _guard = open(HWND(self.0 as *mut _))?;
+        let guard = open(HWND(self.0 as *mut _))?;
         unsafe {
             EmptyClipboard()?;
             put(own, &1u32.to_le_bytes())?;
-            put(TEXT, &wide)
+            put(TEXT, &wide)?;
+            Ok(guard.finish())
         }
     }
-    pub fn write_clip(self, clip: &crate::clip::Clip, plain: bool) -> Result<()> {
+    pub fn write_clip(self, clip: &crate::clip::Clip, plain: bool) -> Result<u32> {
         if plain || (clip.kind != "image" && clip.formats.is_empty()) {
-            self.write(&clip.text)?;
-            set_current(clip.id, unsafe { GetClipboardSequenceNumber() });
+            let sequence = self.write(&clip.text)?;
+            set_current(clip.id, sequence);
             changed();
-            return Ok(());
+            return Ok(sequence);
         }
         let dib = if clip.kind == "image" {
             Some(super::image::dib_from_png(&clip.payload).map_err(|e| {
@@ -242,10 +304,10 @@ impl Clipboard {
                 }
             }
         }
-        drop(guard);
-        set_current(clip.id, unsafe { GetClipboardSequenceNumber() });
+        let sequence = guard.finish();
+        set_current(clip.id, sequence);
         changed();
-        Ok(())
+        Ok(sequence)
     }
 }
 

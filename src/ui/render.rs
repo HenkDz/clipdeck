@@ -322,7 +322,13 @@ impl Render for Popup {
             )
             .capture_action(
                 cx.listener(|this, _: &gpui_component::input::Copy, window, cx| {
-                    this.copy_selected_to_clipboard(window, cx);
+                    this.list_action(super::commands::Command::Copy, window, cx);
+                }),
+            )
+            // Bound input actions dispatch before raw key handlers, including Delete.
+            .capture_action(
+                cx.listener(|this, _: &gpui_component::input::Delete, window, cx| {
+                    this.list_action(super::commands::Command::Delete, window, cx);
                 }),
             )
             .capture_action(cx.listener(
@@ -368,6 +374,19 @@ impl Render for Popup {
                         cx.notify();
                     }))
             }))
+            .children(
+                (matches!(self.view, View::List) && self.selection.len() > 1).then(|| {
+                    status_line(
+                        IconName::Info,
+                        format!(
+                            "{} selected · Ctrl-click toggle · Shift-click range",
+                            self.selection.len()
+                        ),
+                        p.secondary,
+                        p,
+                    )
+                }),
+            )
             .child(self.footer(window, p))
             .children(self.menu.as_ref().map(|menu| {
                 deferred(

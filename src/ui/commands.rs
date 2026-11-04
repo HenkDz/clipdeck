@@ -58,8 +58,18 @@ impl Popup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(clip) = self.clips.get(self.selected) {
-            self.command(clip.id, cmd, window, cx);
+        if let Some(id) = self
+            .selection
+            .focus
+            .filter(|id| self.selection.contains(*id))
+            .or_else(|| {
+                self.clips
+                    .iter()
+                    .find(|c| self.selection.contains(c.id))
+                    .map(|c| c.id)
+            })
+        {
+            self.command(id, cmd, window, cx);
         }
     }
     pub(super) fn command(
@@ -69,6 +79,12 @@ impl Popup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let ids = self.action_ids(id);
+        if matches!(self.view, View::List) && ids.len() > 1 {
+            self.status = None;
+            self.batch_command(ids, cmd, window, cx);
+            return;
+        }
         let Some(mut clip) = self.clips.iter().find(|c| c.id == id).cloned() else {
             return;
         };
@@ -287,7 +303,7 @@ impl Popup {
                         let written = match &subset {
                             Some(paths) => clipboard
                                 .write_files(&paths.iter().map(String::as_str).collect::<Vec<_>>()),
-                            None => clipboard.write_clip(&clip, plain),
+                            None => clipboard.write_clip(&clip, plain).map(|_| ()),
                         };
                         if let Err(error) = written {
                             eprintln!("Clipboard write: {error}");

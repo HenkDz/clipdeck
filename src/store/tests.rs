@@ -5,6 +5,58 @@ mod cases {
         Store::from_connection(Connection::open_in_memory().unwrap(), n, 16).unwrap()
     }
     #[test]
+    fn batch_paste_status_rolls_back_as_a_unit() {
+        let mut s = store(10);
+        let a = clip("a");
+        let b = clip("b");
+        let first = s.record(&a, false, false).unwrap().unwrap();
+        let second = s.record(&b, false, false).unwrap().unwrap();
+        let batch = vec![
+            (first, content_hash(&a.kind, &a.payload)),
+            (second, content_hash(&b.kind, &b.payload)),
+        ];
+        s.db.execute_batch(&format!("CREATE TRIGGER fail_paste BEFORE UPDATE OF pastes ON clips WHEN old.id={second} BEGIN SELECT RAISE(ABORT,'fixture'); END")).unwrap();
+        assert!(s.mark_pasted_many(&batch, false).is_err());
+        assert!(s.list("").unwrap().iter().all(|c| c.pastes == 0));
+        s.db.execute_batch("DROP TRIGGER fail_paste").unwrap();
+        s.mark_pasted_many(&batch, false).unwrap();
+        assert!(
+            s.list("")
+                .unwrap()
+                .iter()
+                .all(|c| c.pastes == 1 && c.plain_pastes == 0)
+        );
+        s.mark_pasted_many(&batch, true).unwrap();
+        assert!(
+            s.list("")
+                .unwrap()
+                .iter()
+                .all(|c| c.pastes == 1 && c.plain_pastes == 1)
+        );
+        s.edit(first, "changed").unwrap();
+        s.mark_pasted_many(&batch, false).unwrap();
+        let rows = s.list("").unwrap();
+        assert_eq!(rows.iter().find(|c| c.id == first).unwrap().pastes, 0);
+        assert_eq!(rows.iter().find(|c| c.id == second).unwrap().pastes, 2);
+    }
+    #[test]
+    fn bulk_pin_is_uniform_and_bulk_delete_rolls_back_on_failure() {
+        let mut s = store(10);
+        let first = s.record(&clip("one"), false, false).unwrap().unwrap();
+        let second = s.record(&clip("two"), false, false).unwrap().unwrap();
+        s.pin(first).unwrap();
+        s.pin_many(&[first, second], true).unwrap();
+        assert!(s.list("").unwrap().iter().all(|c| c.pinned));
+        s.pin_many(&[first, second], false).unwrap();
+        assert!(s.list("").unwrap().iter().all(|c| !c.pinned));
+        s.db.execute_batch(&format!("CREATE TRIGGER fail_batch BEFORE DELETE ON clips WHEN old.id={second} BEGIN SELECT RAISE(ABORT,'fixture'); END")).unwrap();
+        assert!(s.delete_many(&[first, second]).is_err());
+        assert_eq!(s.list("").unwrap().len(), 2);
+        s.db.execute_batch("DROP TRIGGER fail_batch").unwrap();
+        s.delete_many(&[first, second]).unwrap();
+        assert!(s.list("").unwrap().is_empty());
+    }
+    #[test]
     fn v3_migration_adds_paste_counts_without_changing_clips() {
         let mut s = store(10);
         let c = clip("image batch notes");

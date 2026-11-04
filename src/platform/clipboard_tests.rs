@@ -96,5 +96,66 @@ fn live_listener_privacy_formats_and_own_marker() {
             );
         }
     }
-    assert_eq!(current_id(), Some(42));
+    assert!(is_current(42));
+    let mut first = crate::clip::Clip::text("first".into(), "test".into());
+    first.id = 43;
+    let mut second = crate::clip::Clip::text("second".into(), "test".into());
+    second.id = 44;
+    clipboard
+        .write_clips(&[first.clone(), second], false)
+        .unwrap();
+    {
+        let _guard = open(owner).unwrap();
+        let wide = unsafe { bytes(13).unwrap() }
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| u16::from_le_bytes(*b))
+            .take_while(|c| *c != 0)
+            .collect::<Vec<_>>();
+        assert_eq!(String::from_utf16_lossy(&wide), "first\nsecond");
+    }
+    assert!(is_current(43) && is_current(44) && !is_current(42));
+    let dir = std::env::temp_dir().join(format!("clipdeck-batch-live-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let paths = [dir.join("one, été.txt"), dir.join("two.txt")];
+    let files = paths
+        .iter()
+        .enumerate()
+        .map(|(ix, path)| {
+            std::fs::write(path, b"test").unwrap();
+            let mut c = crate::clip::Clip::text(path.to_string_lossy().into(), "test".into());
+            c.kind = "files".into();
+            c.id = 45 + ix as i64;
+            c
+        })
+        .collect::<Vec<_>>();
+    clipboard.write_clips(&files, false).unwrap();
+    assert!(
+        clipboard
+            .write_clips(&[first, files[0].clone()], false)
+            .is_err()
+    );
+    {
+        use windows::Win32::UI::Shell::*;
+        let _guard = open(owner).unwrap();
+        let drop = HDROP(unsafe { GetClipboardData(15).unwrap() }.0);
+        assert_eq!(unsafe { DragQueryFileW(drop, u32::MAX, None) }, 2);
+        for (ix, path) in paths.iter().enumerate() {
+            let mut name = [0u16; 32768];
+            let len = unsafe { DragQueryFileW(drop, ix as u32, Some(&mut name)) } as usize;
+            assert_eq!(
+                std::path::PathBuf::from(String::from_utf16_lossy(&name[..len])),
+                *path
+            );
+        }
+    }
+    assert!(is_current(45) && is_current(46));
+    clipboard
+        .write("Clipdeck batch clipboard verification")
+        .unwrap();
+    for path in paths {
+        std::fs::remove_file(path).unwrap();
+    }
+    std::fs::remove_dir(dir).unwrap();
 }

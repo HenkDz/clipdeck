@@ -122,9 +122,34 @@ pub(super) fn build(
     view: WeakEntity<Popup>,
     id: i64,
     clip: &Clip,
+    selection: (usize, bool),
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
+    if selection.0 > 1 {
+        return menu
+            .min_w(px(232.))
+            .max_w(px(280.))
+            .item(item("Copy selected", view.clone(), id, Command::Copy))
+            .item(item(
+                "Paste selected",
+                view.clone(),
+                id,
+                Command::Paste(false),
+            ))
+            .separator()
+            .item(item(
+                if selection.1 {
+                    "Unpin selected"
+                } else {
+                    "Pin selected"
+                },
+                view.clone(),
+                id,
+                Command::Pin,
+            ))
+            .item(item("Delete selected", view, id, Command::Delete));
+    }
     let media = matches!(clip.kind.as_str(), "image" | "files");
     menu = menu.min_w(px(232.)).max_w(px(280.)).item(item(
         "Preview",

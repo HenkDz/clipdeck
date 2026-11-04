@@ -92,7 +92,7 @@ impl Popup {
     /// The fixed-width leading column: type tile, thumbnail or file mosaic.
     fn leading(&self, clip: &Clip, ring: Hsla, p: Palette) -> Div {
         let compact = self.compact();
-        let current = crate::platform::current_id() == Some(clip.id);
+        let current = crate::platform::is_current(clip.id);
         let (glyph, (tile_bg, tile_fg)) = kind_style(clip, p);
         let mosaic = clip.kind == "files" && clip.file_count > 1;
         let thumb = (!clip.thumbnail.is_empty()).then(|| {
@@ -325,7 +325,7 @@ impl Popup {
         let compact = self.compact();
         let clip = &self.clips[ix];
         let id = clip.id;
-        let selected = ix == self.selected;
+        let selected = self.selection.contains(id);
         let row_bg = if selected { p.selected } else { p.surface };
         let radius = if compact { px(6.) } else { RADIUS };
         let inset = if compact { px(6.) } else { px(10.) };
@@ -355,6 +355,7 @@ impl Popup {
         div()
             .id(("clip", id as u64))
             .group("row")
+            .aria_selected(selected)
             .w_full()
             .h(if compact { COMPACT } else { COMFORTABLE })
             .px(S2)
@@ -380,8 +381,14 @@ impl Popup {
             .child(Self::indicators(clip, compact, p))
             .child(actions)
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                this.selected = ix;
-                if event.click_count() == 2 {
+                let mods = event.modifiers();
+                this.selection.click(
+                    &this.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
+                    id,
+                    mods.control,
+                    mods.shift,
+                );
+                if event.click_count() == 2 && !mods.control && !mods.shift {
                     this.command(id, Command::Paste(false), window, cx);
                 }
                 cx.notify();
@@ -389,7 +396,11 @@ impl Popup {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, _, _| {
-                    this.press = Some((id, None, event.position));
+                    this.press = (!event.modifiers.control && !event.modifiers.shift).then_some((
+                        id,
+                        None,
+                        event.position,
+                    ));
                 }),
             )
             .on_mouse_down(
@@ -399,11 +410,34 @@ impl Popup {
                     let Some(clip) = this.clips.iter().find(|c| c.id == id).cloned() else {
                         return;
                     };
+                    if !this.selection.contains(id) {
+                        this.selection.click(
+                            &this.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
+                            id,
+                            false,
+                            false,
+                        );
+                    } else {
+                        this.selection.focus = Some(id);
+                    }
+                    let count = this.selection.len();
+                    let unpin = this
+                        .clips
+                        .iter()
+                        .filter(|c| this.selection.contains(c.id))
+                        .all(|c| c.pinned);
                     let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-                        super::menu::build(menu, view.clone(), id, &clip, window, cx)
+                        super::menu::build(
+                            menu,
+                            view.clone(),
+                            id,
+                            &clip,
+                            (count, unpin),
+                            window,
+                            cx,
+                        )
                     });
                     // Start at the left inset so submenus have room to open rightwards.
-                    this.selected = ix;
                     let at = point(S2, event.position.y);
                     this.open_menu(menu, at, Anchor::TopLeft, window, cx);
                     cx.stop_propagation();

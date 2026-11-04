@@ -258,6 +258,38 @@ impl Store {
         self.db.execute("DELETE FROM clips WHERE id=?1", [id])?;
         Ok(())
     }
+    pub fn delete_many(&mut self, ids: &[i64]) -> Result<()> {
+        let tx = self.db.transaction()?;
+        for id in ids {
+            tx.execute("DELETE FROM clips WHERE id=?1", [id])?;
+        }
+        tx.commit()
+    }
+    pub fn pin_many(&mut self, ids: &[i64], pinned: bool) -> Result<()> {
+        let tx = self.db.transaction()?;
+        for id in ids {
+            tx.execute(
+                "UPDATE clips SET pinned=?1 WHERE id=?2",
+                params![pinned, id],
+            )?;
+        }
+        tx.execute("DELETE FROM clips WHERE pinned=0 AND id NOT IN(SELECT id FROM clips WHERE pinned=0 ORDER BY rank DESC LIMIT ?1)",[self.limit as i64])?;
+        tx.commit()
+    }
+    pub fn mark_pasted_many(&mut self, clips: &[(i64, Vec<u8>)], plain: bool) -> Result<()> {
+        let tx = self.db.transaction()?;
+        for (id, hash) in clips {
+            tx.execute(
+                if plain {
+                    "UPDATE clips SET plain_pastes=plain_pastes+1 WHERE id=?1 AND hash=?2"
+                } else {
+                    "UPDATE clips SET pastes=pastes+1 WHERE id=?1 AND hash=?2"
+                },
+                params![id, hash],
+            )?;
+        }
+        tx.commit()
+    }
     pub fn mark_pasted(&mut self, id: i64, hash: &[u8], plain: bool) -> Result<()> {
         // A delayed completion must not mark a different clip after edit/deletion/ID reuse.
         self.db.execute(

@@ -5,6 +5,7 @@ pub use frame::{
     Geometry, keep, mouse_mode, native_border, rect, save_bounds, set_geometry, set_keep, set_rect,
     visible,
 };
+mod batch;
 mod capture;
 mod clipboard;
 mod focus;
@@ -18,9 +19,9 @@ mod time;
 mod tray;
 pub use time::{is_today, when};
 
-pub use clipboard::paste_sent;
 pub use clipboard::{Clipboard, start_watcher};
-pub use clipboard::{current_id, set_current};
+pub use clipboard::{clipboard_batch_sent, paste_sent};
+pub use clipboard::{is_current, set_current};
 pub use focus::{Target, configure_popup, hide_popup};
 pub use foreground::last_app;
 pub use instance::Instance;
@@ -30,6 +31,10 @@ pub enum Event {
     PasteSent {
         id: i64,
         hash: Vec<u8>,
+        plain: bool,
+    },
+    PasteBatch {
+        clips: Vec<(i64, Vec<u8>)>,
         plain: bool,
     },
     ImageLocationChanged,

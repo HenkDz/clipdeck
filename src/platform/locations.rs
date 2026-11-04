@@ -1,4 +1,4 @@
-use crate::clip::Clip;
+use crate::clip::{Clip, Format};
 use rusqlite::{Connection, OpenFlags, params};
 use std::{
     io::Write,
@@ -41,12 +41,28 @@ fn database(read_only: bool) -> Result<Connection, String> {
     Ok(db)
 }
 pub fn load_clip(id: i64) -> Result<Clip, String> {
-    database(true)?.query_row("SELECT kind,text,coalesce(payload,cast(text AS BLOB)),source,updated,file_path,screenshot_title,source_exe FROM clips WHERE id=?1",[id],|r| {
+    let mut db = database(true)?;
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    let mut clip=tx.query_row("SELECT kind,text,coalesce(payload,cast(text AS BLOB)),source,updated,file_path,screenshot_title,source_exe FROM clips WHERE id=?1",[id],|r| {
         let mut clip = Clip::text(r.get(1)?,r.get(3)?);
         clip.id=id; clip.kind=r.get(0)?; clip.payload=r.get(2)?; clip.updated=r.get(4)?;
         clip.file_path=r.get(5)?; clip.screenshot_title=r.get(6)?; clip.source_exe=r.get(7)?;
         Ok(clip)
-    }).map_err(|e| e.to_string())
+    }).map_err(|e| e.to_string())?;
+    clip.formats = tx
+        .prepare("SELECT name,data FROM formats WHERE clip_id=?1")
+        .map_err(|e| e.to_string())?
+        .query_map([id], |r| {
+            Ok(Format {
+                name: r.get(0)?,
+                data: r.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(clip)
 }
 fn remember(clip: &Clip, location: &Location) -> Result<(), String> {
     database(false)?.execute("UPDATE clips SET file_path=?1,screenshot_title=?2 WHERE id=?3 AND updated=?4 AND kind='image' AND payload=?5",

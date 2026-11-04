@@ -107,7 +107,7 @@ pub struct Popup {
     pub(super) focus: FocusHandle,
     pub(super) clips: Vec<Clip>,
     pub(super) items: Vec<Option<usize>>,
-    pub(super) selected: usize,
+    pub(super) selection: super::selection::Selection,
     pub(super) filter: usize,
     pub(super) list: ListState,
     pub(super) gallery_scroll: ScrollHandle,
@@ -137,7 +137,7 @@ impl Popup {
         input.update(cx, |s, cx| s.focus(window, cx));
         let change = cx.subscribe_in(&input, window, |this, _, event, _, cx| {
             if matches!(event, InputEvent::Change) {
-                this.selected = 0;
+                this.selection = Default::default();
                 this.reload(cx);
             }
         });
@@ -157,7 +157,7 @@ impl Popup {
             focus: cx.focus_handle(),
             clips: vec![],
             items: vec![],
-            selected: 0,
+            selection: Default::default(),
             filter: 0,
             list: ListState::new(0, ListAlignment::Top, px(120.)),
             gallery_scroll: ScrollHandle::new(),
@@ -189,9 +189,11 @@ impl Popup {
         if !target.is_app() {
             self.target = target;
         }
-        self.selected = 0;
+        self.selection = Default::default();
         self.filter = 0;
-        self.status = None;
+        if matches!(self.status, Some(Status::Info(_))) {
+            self.status = None;
+        }
         self.view = View::List;
         self.menu = None;
         self.input.update(cx, |s, cx| {
@@ -236,7 +238,8 @@ impl Popup {
                 return;
             }
         }
-        self.selected = self.selected.min(self.clips.len().saturating_sub(1));
+        self.selection
+            .sync(&self.clips.iter().map(|c| c.id).collect::<Vec<_>>());
         self.items.clear();
         let mut section = "";
         for (ix, clip) in self.clips.iter().enumerate() {
@@ -251,7 +254,7 @@ impl Popup {
     }
     pub(super) fn set_filter(&mut self, filter: usize, cx: &mut Context<Self>) {
         self.filter = filter % FILTERS.len();
-        self.selected = 0;
+        self.selection = Default::default();
         self.reload(cx);
     }
     pub(super) fn cycle_filter(
@@ -417,8 +420,12 @@ impl Popup {
             }
             "d" if mods.control && !mods.alt && !mods.shift => self.toggle_density(cx),
             "," if mods.control => self.open_settings(window, cx),
-            "up" => self.selected = self.selected.saturating_sub(1),
-            "down" => self.selected = (self.selected + 1).min(self.clips.len().saturating_sub(1)),
+            "up" | "down" => self.selection.navigate(
+                &self.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
+                key == "down",
+                mods.shift,
+                mods.control,
+            ),
             "enter" => self.selected_command(Command::Paste(mods.shift), window, cx),
             "c" if mods.control && !mods.shift && !mods.alt => {
                 self.selected_command(Command::Copy, window, cx)
@@ -431,13 +438,22 @@ impl Popup {
             {
                 let ix = key.parse::<usize>().unwrap() - 1;
                 if ix < self.clips.len() {
-                    self.selected = ix;
+                    self.selection.click(
+                        &self.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
+                        self.clips[ix].id,
+                        false,
+                        false,
+                    );
                     self.selected_command(Command::Paste(false), window, cx);
                 }
             }
             _ => return false,
         }
-        if let Some(ix) = self.items.iter().position(|i| *i == Some(self.selected)) {
+        if let Some(ix) = self
+            .items
+            .iter()
+            .position(|i| i.is_some_and(|ix| Some(self.clips[ix].id) == self.selection.focus))
+        {
             self.list.scroll_to_reveal_item(ix);
         }
         true
@@ -474,16 +490,18 @@ impl Popup {
             View::Settings(_) => &[("Esc", "back")],
         }
     }
-    pub(super) fn copy_selected_to_clipboard(
+    pub(super) fn list_action(
         &mut self,
+        command: Command,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if matches!(self.view, View::List)
             && self.menu.is_none()
-            && self.input.read(cx).focus_handle(cx).is_focused(window)
+            && (self.input.read(cx).focus_handle(cx).is_focused(window)
+                || self.focus.is_focused(window))
         {
-            self.selected_command(Command::Copy, window, cx);
+            self.selected_command(command, window, cx);
             cx.stop_propagation();
         }
     }

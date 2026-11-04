@@ -1,9 +1,11 @@
+mod bulk;
 mod commands;
 mod menu;
 mod mode;
 mod popup;
 mod render;
 mod rows;
+mod selection;
 mod settings;
 mod theme;
 mod views;
