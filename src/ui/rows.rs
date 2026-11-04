@@ -45,7 +45,7 @@ impl Popup {
         let clip = &self.clips[ix];
         let id = clip.id;
         let selected = ix == self.selected;
-        let image = if clip.kind == "image" {
+        let image = if !clip.thumbnail.is_empty() {
             img(Arc::new(Image::from_bytes(
                 ImageFormat::Png,
                 clip.thumbnail.clone(),
@@ -110,6 +110,7 @@ impl Popup {
             .children(selected.then(|| {
                 div().flex().flex_none().items_center().gap_1().children(
                     [
+                        ("paste", Command::Paste(false)),
                         ("plain", Command::Paste(true)),
                         ("pin", Command::Pin),
                         ("delete", Command::Delete),
@@ -122,7 +123,8 @@ impl Popup {
                             .compact()
                             .icon(icon(name))
                             .accessibility_label(match cmd {
-                                Command::Paste(_) => "Paste as plain text",
+                                Command::Paste(false) => "Paste",
+                                Command::Paste(true) => "Paste as plain text",
                                 Command::Pin => {
                                     if clip.pinned {
                                         "Unpin"
@@ -133,7 +135,8 @@ impl Popup {
                                 _ => "Delete",
                             })
                             .tooltip(match cmd {
-                                Command::Paste(_) => "Paste as plain text",
+                                Command::Paste(false) => "Paste",
+                                Command::Paste(true) => "Paste as plain text",
                                 Command::Pin => {
                                     if clip.pinned {
                                         "Unpin"
@@ -151,8 +154,11 @@ impl Popup {
                 )
             }))
             .children((clip.pinned && !selected).then(|| icon("pin")))
-            .on_click(cx.listener(move |this, _, _, cx| {
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 this.selected = ix;
+                if event.click_count() == 2 {
+                    this.command(id, Command::Paste(false), window, cx);
+                }
                 cx.notify();
             }))
             .on_mouse_down(

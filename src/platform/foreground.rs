@@ -30,6 +30,7 @@ fn remember(hwnd: HWND) {
     let class = String::from_utf16_lossy(&class[..len]);
     if !SHELL_CLASSES.contains(&class.as_str()) {
         LAST.store(hwnd.0 as usize, Ordering::SeqCst);
+        super::frame::foreground_changed(hwnd);
     }
 }
 

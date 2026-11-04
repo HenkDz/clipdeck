@@ -12,6 +12,9 @@ use windows::{
 pub struct Target(usize);
 
 impl Target {
+    pub(super) fn raw(self) -> usize {
+        self.0
+    }
     pub fn is_app(self) -> bool {
         let mut pid = 0;
         unsafe {
@@ -25,8 +28,23 @@ impl Target {
     pub(super) fn from_hwnd(hwnd: HWND) -> Self {
         Self(hwnd.0 as usize)
     }
+    pub(super) fn restore(self) -> bool {
+        unsafe {
+            let hwnd = HWND(self.0 as *mut _);
+            if !IsWindow(Some(hwnd)).as_bool() { return false; }
+            if GetForegroundWindow() == hwnd { return true; }
+            if SetForegroundWindow(hwnd).as_bool() { return GetForegroundWindow() == hwnd; }
+            let current = GetCurrentThreadId();
+            let foreground = GetWindowThreadProcessId(GetForegroundWindow(), None);
+            if foreground != current && AttachThreadInput(current, foreground, true).as_bool() {
+                let _ = SetForegroundWindow(hwnd);
+                let _ = AttachThreadInput(current, foreground, false);
+            }
+            GetForegroundWindow() == hwnd
+        }
+    }
 
-    pub fn paste(self) -> Result<()> {
+    pub fn paste(self, mouse: bool) -> Result<()> {
         unsafe {
             let hwnd = HWND(self.0 as *mut _);
             if !IsWindow(Some(hwnd)).as_bool() {
@@ -36,17 +54,11 @@ impl Target {
                 ));
             }
             // The hotkey/Enter is user input; direct foreground activation is attempted first.
-            let mut restored = SetForegroundWindow(hwnd).as_bool();
-            eprintln!("Direct foreground restore: {restored}");
-            if !restored {
-                let current = GetCurrentThreadId();
-                let foreground = GetWindowThreadProcessId(GetForegroundWindow(), None);
-                if foreground != current && AttachThreadInput(current, foreground, true).as_bool() {
-                    restored = SetForegroundWindow(hwnd).as_bool();
-                    eprintln!("Attached foreground restore: {restored}");
-                    let _ = AttachThreadInput(current, foreground, false);
-                }
-            }
+            let restored = if mouse {
+                GetForegroundWindow() == hwnd
+            } else {
+                self.restore()
+            };
             if !restored || GetForegroundWindow() != hwnd {
                 return Err(windows::core::Error::new(
                     windows::core::HRESULT(0x80004005u32 as i32),
@@ -141,7 +153,7 @@ pub fn configure_popup(window: &gpui::Window) {
                 placement.top,
                 placement.right - placement.left,
                 placement.bottom - placement.top,
-                SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+                SWP_NOACTIVATE | SWP_FRAMECHANGED,
             );
         }
     }

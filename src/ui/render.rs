@@ -1,4 +1,5 @@
 use super::Popup;
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
     ActiveTheme,
@@ -6,9 +7,69 @@ use gpui_component::{
 };
 use std::sync::atomic::Ordering;
 impl Render for Popup {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let border = if cx.theme().is_dark() {
+            0x454542
+        } else {
+            0xe5e4e0
+        };
+        let native = crate::platform::native_border(window, border);
         let entity = cx.entity();
-        let content = if let Some((_, editor)) = &self.editor {
+        let content = if let Some(preview) = &self.preview {
+            div()
+                .id("preview")
+                .flex_1()
+                .min_h_0()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .id("preview-text")
+                        .overflow_y_scroll()
+                        .max_h(px(300.))
+                        .text_sm()
+                        .child(preview.text.clone()),
+                )
+                .children((!preview.png.is_empty()).then(|| {
+                    img(std::sync::Arc::new(Image::from_bytes(
+                        ImageFormat::Png,
+                        preview.png.clone(),
+                    )))
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .object_fit(ObjectFit::Contain)
+                }))
+                .children(preview.file.clone().map(|file| {
+                    div()
+                        .id("open-preview")
+                        .p_2()
+                        .cursor_pointer()
+                        .child("▶ Open in default app")
+                        .on_click(move |_, _, _| {
+                            let file = file.clone();
+                            std::thread::spawn(move || {
+                                if let Err(e) = crate::platform::open_external(&file) {
+                                    eprintln!("Open preview: {e}");
+                                }
+                            });
+                        })
+                }))
+                .child(
+                    div()
+                        .id("close-preview")
+                        .cursor_pointer()
+                        .child("Close preview · Space / Esc")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.preview = None;
+                            this.preview_id = None;
+                            cx.notify();
+                        })),
+                )
+                .into_any_element()
+        } else if let Some((_, editor)) = &self.editor {
             div()
                 .flex_1()
                 .min_h_0()
@@ -56,8 +117,7 @@ impl Render for Popup {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .rounded_xl()
-            .border_1()
+            .when(!native, |el| el.border_1())
             .border_color(cx.theme().border)
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
@@ -72,7 +132,37 @@ impl Render for Popup {
                     this.cycle_filter(true, window, cx)
                 },
             ))
-            .child(div().px_3().pt_2().pb_2().child(Input::new(&self.input)))
+            .child(
+                div()
+                    .flex()
+                    .px_3()
+                    .pt_2()
+                    .pb_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, window, cx| {
+                                    this.mode.search();
+                                    crate::platform::mouse_mode(window, false, this.target);
+                                    window.activate_window();
+                                    this.input.update(cx, |s, cx| s.focus(window, cx));
+                                }),
+                            )
+                            .child(Input::new(&self.input)),
+                    )
+                    .child(
+                        div()
+                            .id("close")
+                            .p_2()
+                            .cursor_pointer()
+                            .child("×")
+                            .on_click(
+                                cx.listener(|_, _, window, _| crate::platform::hide_popup(window)),
+                            ),
+                    ),
+            )
             .child(
                 div().flex().gap_1().px_3().pb_2().children(
                     ["All", "Links", "Images", "Text", "Pinned"]

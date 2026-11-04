@@ -1,5 +1,6 @@
 mod commands;
 mod menu;
+mod mode;
 mod popup;
 mod rows;
 pub use popup::Popup;

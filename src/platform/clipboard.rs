@@ -104,7 +104,23 @@ fn read(owner: HWND) -> Result<Option<Event>> {
         if own_write {
             return Ok(None);
         }
-        super::capture::read().map(|clip| clip.map(|clip| Event::Clip { clip, own_write }))
+        let clip = super::capture::read()?;
+        drop(_guard);
+        if let Some(mut clip) = clip {
+            let sender = SENDER.with(|s| s.borrow().clone());
+            // Shell extensions may block; never hold the clipboard or its message loop.
+            thread::spawn(move || {
+                if clip.kind == "files" {
+                    clip.thumbnail =
+                        super::preview::thumbnail(clip.text.lines().next().unwrap_or(""), 96)
+                            .unwrap_or_default();
+                }
+                if let Some(sender) = sender {
+                    let _ = sender.send_blocking(Event::Clip { clip, own_write });
+                }
+            });
+        }
+        Ok(None)
     }
 }
 

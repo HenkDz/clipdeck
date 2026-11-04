@@ -4,6 +4,7 @@ use gpui_component::menu::{PopupMenu, PopupMenuItem};
 use gpui_component::{ActiveTheme, kbd::Kbd};
 fn item(label: &str, view: WeakEntity<Popup>, id: i64, cmd: Command) -> PopupMenuItem {
     let key = match cmd {
+        Command::Preview => Some("space"),
         Command::Paste(false) => Some("enter"),
         Command::Paste(true) => Some("shift-enter"),
         Command::Pin => Some("ctrl-p"),
@@ -50,6 +51,8 @@ pub(super) fn build(
     menu = menu
         .min_w(px(220.))
         .max_w(px(230.))
+        .item(item("Preview", view.clone(), id, Command::Preview))
+        .separator()
         .item(item("Paste", view.clone(), id, Command::Paste(false)))
         .item(
             item(

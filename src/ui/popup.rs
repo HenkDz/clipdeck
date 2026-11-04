@@ -16,6 +16,9 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 pub struct Popup {
+    pub(super) preview: Option<platform::preview::Preview>,
+    pub(super) preview_id: Option<i64>,
+    pub(super) mode: super::mode::Mode,
     pub(super) store: Rc<RefCell<Store>>,
     pub(super) input: Entity<InputState>,
     pub(super) clips: Vec<Clip>,
@@ -51,8 +54,8 @@ impl Popup {
                 this.reload(cx);
             }
         });
-        let activation = cx.observe_window_activation(window, |_, window, _| {
-            if !window.is_window_active() {
+        let activation = cx.observe_window_activation(window, |this, window, _| {
+            if !this.mode.is_mouse() && !window.is_window_active() {
                 platform::hide_popup(window);
             }
         });
@@ -60,6 +63,9 @@ impl Popup {
             super::sync_theme(Some(window), cx);
         });
         let mut this = Self {
+            preview: None,
+            preview_id: None,
+            mode: super::mode::Mode::Keyboard,
             store,
             input,
             clips: vec![],
@@ -80,7 +86,18 @@ impl Popup {
         this.reload(cx);
         this
     }
-    pub fn reopen(&mut self, target: Target, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn reopen(
+        &mut self,
+        target: Target,
+        mouse: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if mouse && platform::visible(window) {
+            platform::hide_popup(window);
+            return;
+        }
+        self.mode = super::mode::Mode::opened(mouse);
         if !target.is_app() {
             self.target = target;
         }
@@ -89,6 +106,8 @@ impl Popup {
         self.error = None;
         self.editor = None;
         self.details = None;
+        self.preview = None;
+        self.preview_id = None;
         self.context_menu = None;
         self.input.update(cx, |s, cx| {
             s.set_value("", window, cx);
@@ -96,7 +115,10 @@ impl Popup {
         });
         self.reload(cx);
         platform::configure_popup(window);
-        window.activate_window();
+        platform::mouse_mode(window, mouse, self.target);
+        if !mouse {
+            window.activate_window();
+        }
     }
     pub fn reload(&mut self, cx: &mut Context<Self>) {
         let result = self.store.borrow().list(&self.input.read(cx).value());
@@ -156,6 +178,15 @@ impl Popup {
     ) {
         let key = event.keystroke.key.as_str();
         let mods = &event.keystroke.modifiers;
+        if self.preview.is_some() {
+            if key == "space" || key == "escape" {
+                self.preview = None;
+                self.preview_id = None;
+                cx.stop_propagation();
+                cx.notify();
+            }
+            return;
+        }
         if self.editor.is_none()
             && self.details.is_none()
             && !self.input.read(cx).focus_handle(cx).is_focused(window)
@@ -195,6 +226,9 @@ impl Popup {
                     self.selected = (self.selected + 1).min(self.clips.len().saturating_sub(1))
                 }
                 "enter" => self.selected_command(Command::Paste(mods.shift), window, cx),
+                "space" if self.input.read(cx).value().is_empty() => {
+                    self.selected_command(Command::Preview, window, cx)
+                }
                 "p" if mods.control => self.selected_command(Command::Pin, window, cx),
                 "delete" => self.selected_command(Command::Delete, window, cx),
                 "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"

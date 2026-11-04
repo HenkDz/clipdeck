@@ -28,7 +28,7 @@ pub fn create(
                 ..
             }
         ) {
-            let _ = click_sender.send_blocking(Event::Open(foreground::last_app()));
+            let _ = click_sender.send_blocking(Event::TrayOpen(foreground::last_app()));
         }
     }));
     menu.append_items(&[
@@ -40,7 +40,7 @@ pub fn create(
     ])?;
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         let event = match event.id.0.as_str() {
-            "open" => Event::Open(foreground::last_app()),
+            "open" => Event::TrayOpen(foreground::last_app()),
             "pause" => {
                 paused.fetch_xor(true, Ordering::SeqCst);
                 Event::Pause

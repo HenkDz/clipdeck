@@ -94,16 +94,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                         platform::Event::Error(error) => eprintln!("{error}"),
-                        platform::Event::Open(target) => {
+                        platform::Event::Open(target) | platform::Event::TrayOpen(target) => {
+                            let mouse = matches!(event, platform::Event::TrayOpen(_));
                             if let (Some(handle), Some(view)) = (popup, view.as_ref()) {
                                 let _ = handle.update(cx, |_, window, cx| {
-                                    view.update(cx, |view, cx| view.reopen(target, window, cx))
+                                    view.update(cx, |view, cx| {
+                                        view.reopen(target, mouse, window, cx)
+                                    })
                                 });
                                 return;
                             }
                             match cx.open_window(
                                 WindowOptions {
                                     titlebar: None,
+                                    focus: false,
+                                    show: false,
                                     kind: WindowKind::Normal,
                                     window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                                         point(px(0.), px(0.)),
@@ -128,7 +133,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                         )
                                     });
                                     view = Some(entity.clone());
-                                    window.activate_window();
+                                    entity.update(cx, |v, cx| v.reopen(target, mouse, window, cx));
                                     cx.new(|cx| gpui_component::Root::new(entity, window, cx))
                                 },
                             ) {

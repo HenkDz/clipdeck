@@ -1,3 +1,6 @@
+mod frame;
+pub mod preview;
+pub use frame::{mouse_mode, native_border, visible};
 mod capture;
 mod clipboard;
 mod focus;
@@ -21,6 +24,7 @@ pub enum Event {
         own_write: bool,
     },
     Open(Target),
+    TrayOpen(Target),
     Pause,
     Quit,
     Settings,

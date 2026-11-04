@@ -4,6 +4,7 @@ use gpui::*;
 use gpui_component::input::TextareaState;
 #[derive(Clone, Copy)]
 pub(super) enum Command {
+    Preview,
     Paste(bool),
     Pin,
     Delete,
@@ -37,6 +38,32 @@ impl Popup {
         };
         let result: Result<(), String> = (|| {
             match cmd {
+                Command::Preview => {
+                    self.preview = Some(platform::preview::Preview {
+                        text: "Loading preview…".into(),
+                        ..Default::default()
+                    });
+                    self.preview_id = Some(id);
+                    let task = cx.background_spawn(async move { platform::preview::load(id) });
+                    cx.spawn(async move |this, cx| {
+                        let result = task.await;
+                        let _ = this.update(cx, |this, cx| {
+                            if this.preview_id == Some(id) {
+                                match result {
+                                    Ok(preview) => this.preview = Some(preview),
+                                    Err(error) => {
+                                        this.preview = Some(platform::preview::Preview {
+                                            text: error,
+                                            ..Default::default()
+                                        })
+                                    }
+                                }
+                                cx.notify();
+                            }
+                        });
+                    })
+                    .detach();
+                }
                 Command::Pin => self.store.borrow_mut().pin(id).map_err(|e| e.to_string())?,
                 Command::Delete => self
                     .store
@@ -116,6 +143,7 @@ impl Popup {
                     }
                     let clipboard = self.clipboard;
                     let target = self.target;
+                    let mouse = self.mode.is_mouse();
                     let delay = self.delay;
                     if !matches!(cmd, Command::Copy) {
                         platform::hide_popup(window);
@@ -127,7 +155,7 @@ impl Popup {
                         }
                         if !matches!(cmd, Command::Copy) {
                             std::thread::sleep(std::time::Duration::from_millis(delay));
-                            if let Err(error) = target.paste() {
+                            if let Err(error) = target.paste(mouse) {
                                 eprintln!("Paste: {error}");
                             }
                         }
