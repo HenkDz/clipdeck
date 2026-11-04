@@ -298,10 +298,23 @@ impl Render for Popup {
             .text_color(p.text)
             .text_size(super::theme::TITLE)
             .capture_key_down(cx.listener(Self::key))
+            // A press on a clip that moves a few pixels becomes a drag into another app.
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
+                let Some((id, file, at)) = this.press else {
+                    return;
+                };
+                if event.pressed_button != Some(MouseButton::Left) {
+                    this.press = None;
+                } else if (event.position - at).magnitude() > 6. {
+                    this.press = None;
+                    this.begin_drag(id, file, window, cx);
+                }
+            }))
             // Clicks focus the root; keep typing and arrow keys going to the search field.
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _, window, cx| {
+                    this.press = None;
                     if matches!(this.view, View::List) && this.menu.is_none() {
                         this.input.update(cx, |s, cx| s.focus(window, cx));
                     }

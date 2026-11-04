@@ -118,6 +118,8 @@ pub struct Popup {
     pub(super) menu: Option<Menu>,
     pub(super) paused: Arc<AtomicBool>,
     pub(super) set_hotkey: SetHotkey,
+    /// A left press on a clip (and gallery file) that becomes a drag once the mouse moves.
+    pub(super) press: Option<(i64, Option<usize>, Point<Pixels>)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -166,6 +168,7 @@ impl Popup {
             menu: None,
             paused: hooks.paused,
             set_hotkey: hooks.set_hotkey,
+            press: None,
             _subscriptions: vec![change, activation, theme],
         };
         this.reload(cx);

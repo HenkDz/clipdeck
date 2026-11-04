@@ -175,6 +175,10 @@ unsafe extern "system" fn proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRE
             }
             LRESULT(0)
         }
+        super::drag::WM_DRAG => {
+            super::drag::run(h);
+            LRESULT(0)
+        }
         WM_EXITSIZEMOVE => {
             let result = original();
             remember_bounds(h);

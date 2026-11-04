@@ -440,6 +440,12 @@ impl Popup {
                         this.file_menu(ix, event.position, true, window, cx);
                     }),
                 )
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, event: &MouseDownEvent, _, _| {
+                        this.press = Some((id, Some(ix), event.position));
+                    }),
+                )
         });
         let tiles: Vec<_> = tiles.collect();
         div()

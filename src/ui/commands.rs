@@ -393,6 +393,50 @@ impl Popup {
         })
         .detach();
     }
+    /// Starts dragging a clip, or one file of it, out to another app.
+    pub(super) fn begin_drag(
+        &mut self,
+        id: i64,
+        file: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use platform::drag::{Payload, image_file, start};
+        let Some(mut clip) = self.clips.iter().find(|c| c.id == id).cloned() else {
+            return;
+        };
+        let result = (|| {
+            self.store
+                .borrow()
+                .hydrate(&mut clip)
+                .map_err(|e| e.to_string())?;
+            let paths: Vec<String> = clip.paths().iter().map(|p| p.to_string()).collect();
+            let payload = match clip.kind.as_str() {
+                "files" => Payload::Files(match file {
+                    Some(ix) => paths.get(ix).cloned().into_iter().collect(),
+                    None => paths,
+                }),
+                "image" => Payload::Image {
+                    file: image_file(&clip)?,
+                    png: clip.payload.clone(),
+                },
+                _ => Payload::Text {
+                    text: clip.text.clone(),
+                    formats: clip.formats.clone(),
+                },
+            };
+            start(
+                window,
+                payload,
+                id,
+                crate::store::content_hash(&clip.kind, &clip.payload),
+            )
+        })();
+        if let Err(error) = result {
+            self.status = Some(Status::Error(format!("Drag: {error}")));
+            cx.notify();
+        }
+    }
     /// Opens one file in its default app, or selects it in Explorer, off the UI thread.
     pub(super) fn open_file(&mut self, path: String, reveal: bool, cx: &mut Context<Self>) {
         let task = cx.background_spawn(async move {

@@ -1,5 +1,34 @@
 # Clipdeck milestone 2
 
+## Drag and drop into other apps (2026-11-04)
+
+Drag-and-drop out of the popup did not exist: GPUI's drags stay inside its
+own window. A left press on a row, or on a file in the gallery, that moves
+more than 6 px now starts a native Windows drag. It uses the Shell's data
+object (`SHCreateDataObject`) and drag loop (`SHDoDragDrop`) with its
+default drop source, started from the popup's own message loop rather than
+inside a GPUI event. The `windows` dependency gains its
+`Win32_System_Ole` and `Win32_System_Com_StructuredStorage` features; no
+new crates.
+
+- Text, links, email: Unicode text plus the clip's stored rich formats.
+- Files: CF_HDROP of all files (one file from a gallery tile), copy effect.
+- Images: the original file if it still exists, otherwise
+  `%TEMP%\Clipdeck-drag\Clipdeck <capture time>.png`, plus PNG and CF_DIB.
+- A completed drop counts as a normal paste and hides the popup unless it
+  is kept open. A plain click still only selects.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Text row → WinForms text box | PASS | Injected mouse drag; the box's drop handler logged `UnicodeText text=Dragged out of Clipdeck`. |
+| Image row → same box | PASS | Logged `FileDrop,PNG,DeviceIndependentBitmap files=Clipdeck 2026-11-04_12-08-23.png`. |
+| 3-file row → Explorer folder | PASS | The folder gained `ui.png`, `notes.pdf`, `demo.mp4`. |
+| One gallery file → Explorer folder | PASS | Only `notes.pdf` arrived. |
+| Drops counted, click unaffected | PASS | SQLite `pastes` rose per drop; a click on a row selected it and kept the popup open. |
+
+Drags driven with `SetCursorPos` alone are not tracked by the OLE drag
+loop (drop effect 0); injected mouse input, like a real mouse, works.
+
 ## Settings window (2026-11-04)
 
 Settings is now a view in the popup, opened from the header menu

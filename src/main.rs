@@ -135,6 +135,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             cx.refresh_windows();
                         }
                         platform::Event::ClipboardChanged => cx.refresh_windows(),
+                        // A drop works like a paste: count it, and close unless kept open.
+                        platform::Event::Dropped { id, hash } => {
+                            if let Err(error) = store.borrow_mut().mark_pasted(id, &hash, false) {
+                                eprintln!("Store drop: {error}");
+                            }
+                            if let (Some(handle), Some(view)) = (popup, view.as_ref()) {
+                                let _ = handle.update(cx, |_, window, cx| {
+                                    if !platform::keep() {
+                                        platform::hide_popup(window);
+                                    }
+                                    view.update(cx, |v, cx| v.reload(cx));
+                                });
+                            }
+                        }
                         platform::Event::PasteSent { id, hash, plain } => {
                             if let Err(error) = store.borrow_mut().mark_pasted(id, &hash, plain) {
                                 eprintln!("Store paste: {error}");

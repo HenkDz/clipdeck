@@ -387,6 +387,12 @@ impl Popup {
                 cx.notify();
             }))
             .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, _, _| {
+                    this.press = Some((id, None, event.position));
+                }),
+            )
+            .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     let view = cx.entity().downgrade();

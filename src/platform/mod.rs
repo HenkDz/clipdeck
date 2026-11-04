@@ -1,3 +1,4 @@
+pub mod drag;
 mod frame;
 pub mod preview;
 pub use frame::{
@@ -32,6 +33,11 @@ pub enum Event {
         plain: bool,
     },
     ImageLocationChanged,
+    /// A clip was dropped into another app.
+    Dropped {
+        id: i64,
+        hash: Vec<u8>,
+    },
     Geometry(Geometry),
     ClipboardChanged,
     Clip {
