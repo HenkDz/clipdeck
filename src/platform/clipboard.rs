@@ -227,6 +227,7 @@ pub fn start_watcher(
         };
         match setup() {
             Ok(hwnd) => {
+                super::foreground::watch();
                 let _tray = match super::tray::create(sender.clone(), paused) {
                     Ok(tray) => Some(tray),
                     Err(e) => {

@@ -1,6 +1,7 @@
 mod capture;
 mod clipboard;
 mod focus;
+mod foreground;
 mod image;
 mod instance;
 mod placement;

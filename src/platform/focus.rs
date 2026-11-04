@@ -22,6 +22,9 @@ impl Target {
     pub fn capture() -> Self {
         Self(unsafe { GetForegroundWindow() }.0 as usize)
     }
+    pub(super) fn from_hwnd(hwnd: HWND) -> Self {
+        Self(hwnd.0 as usize)
+    }
 
     pub fn paste(self) -> Result<()> {
         unsafe {

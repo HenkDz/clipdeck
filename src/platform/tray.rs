@@ -1,10 +1,10 @@
-use super::{Event, Target};
+use super::{Event, foreground};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 use tray_icon::{
-    Icon, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
+    Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
 
@@ -17,18 +17,18 @@ pub fn create(
     let pause = CheckMenuItem::with_id("pause", "Pause recording", true, false, None);
     let settings = MenuItem::with_id("settings", "Settings", true, None);
     let quit = MenuItem::with_id("quit", "Quit", true, None);
-    let target = Arc::new(std::sync::Mutex::new(Target::capture()));
-    let menu_target = target.clone();
+    // Left click opens the popup; right click shows the menu.
+    let click_sender = sender.clone();
     TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
         if matches!(
             event,
             TrayIconEvent::Click {
-                button_state: MouseButtonState::Down,
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
                 ..
             }
-        ) && let Ok(mut target) = target.lock()
-        {
-            *target = Target::capture();
+        ) {
+            let _ = click_sender.send_blocking(Event::Open(foreground::last_app()));
         }
     }));
     menu.append_items(&[
@@ -40,12 +40,7 @@ pub fn create(
     ])?;
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         let event = match event.id.0.as_str() {
-            "open" => Event::Open(
-                menu_target
-                    .lock()
-                    .map(|t| *t)
-                    .unwrap_or_else(|_| Target::capture()),
-            ),
+            "open" => Event::Open(foreground::last_app()),
             "pause" => {
                 paused.fetch_xor(true, Ordering::SeqCst);
                 Event::Pause
@@ -71,6 +66,7 @@ pub fn create(
     Ok(TrayIconBuilder::new()
         .with_tooltip("Clipdeck")
         .with_menu(Box::new(menu))
+        .with_menu_on_left_click(false)
         .with_icon(Icon::from_rgba(rgba, 32, 32)?)
         .build()?)
 }
