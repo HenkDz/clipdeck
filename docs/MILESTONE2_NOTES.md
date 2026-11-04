@@ -270,3 +270,69 @@ Milestone 3 remains Ditto import, collections, sensitive-text masking/expiry,
 settings UI and autostart. Installer and sync remain non-goals. Paint acceptance
 and real mixed-DPI verification are outstanding validation work, not claims
 of milestone 3 functionality.
+
+## Schema v3 and screenshot source follow-up (2026-11-04)
+
+Local branch `Nour/m2-ux`; no push. The owner's v2 database was backed up
+consistently to this worktree's ignored `target/history-before-v3.db` before
+starting the migrated release. The live database reports schema v3.
+
+- Capture prefers the registered PNG format and preserves its bytes/alpha.
+  DIB-only capture still encodes PNG. Images store PNG plus thumbnail, without
+  raw DIB/DIBV5 format blobs. Admission counts PNG plus thumbnail. Paste writes
+  registered PNG plus a regenerated bottom-up 32-bit CF_DIB. The existing
+  exclusion formats and own-write suppression remain in place.
+- Transactional v3 migration preserves image PNGs, IDs, pin/history metadata,
+  and non-image formats, removes image format blobs, adds copy/source metadata,
+  and vacuums existing databases. Migration failure rolls back. The v2 disk
+  fixture includes a 19,000,000-byte raw DIB blob and verifies reclaimed space.
+- Re-copy increments persisted `copies` and promotes the clip. Rows show a
+  3px theme-accent bar and `copied N×`. A clipboard-sequence-checked marker
+  tracks the last captured or own-written clip. Oversized admission skips are
+  visible as `Skipped N large clips` below the footer for the current run.
+- Show in folder sits below Preview for file/image clips and is omitted for
+  text. Files sharing a directory are all selected using native Shell PIDLs;
+  different subfolders open their common parent. Files on unrelated drives
+  report that no common folder exists.
+- Images retain explicit CF_HDROP/FileNameW paths when supplied. Otherwise,
+  ShareX captures consult its read-only History.db through Known Documents
+  with a bounded SQLite busy timeout, newest existing image within ±10 seconds,
+  and WindowTitle/ProcessName tags. A delayed background lookup runs three
+  seconds after capture and lookup retries on demand. A remembered source is
+  guarded by clip ID, timestamp and PNG bytes before updating metadata.
+- If ShareX History.db is missing, its custom screenshot folder is consulted
+  when enabled. The bounded directory-depth scan matches PNG dimensions and
+  capture time. Snipping Tool fallback scans Known Pictures/Screenshots for
+  matching PNG dimensions within ±5 seconds. If no source is found, first
+  Preview/Show in folder exports to Known Pictures/Clipdeck with a local
+  `yyyy-mm-dd_hh-mm-ss.png` name. Collisions use a clip-ID suffix and never
+  overwrite a different file. The resolved path is remembered on the clip.
+  This supersedes the temporary-image-export behavior described above.
+
+Final checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+ordinary tests (**26 passed, 2 ignored**), and the release build pass.
+Both ignored tests were also run explicitly and passed: real clipboard
+privacy/own-write/PNG/DIB round-trip, and read-only real ShareX lookup.
+Tests cover v2 migration/vacuum and rollback, the 3440×1392 32-bit capture
+under the default 16 MiB stored-size cap, regenerated DIB pixel layout,
+PNG alpha, timestamp offsets and boundaries, custom-path precedence,
+Snipping dimensions, safe export collisions and common-folder routing.
+Crate versions remain unchanged; no vendoring or patches.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Owner v2 history migration | PASS | Consistent backup before launch; independent SQLite query reports user_version=3 and existing image rows remain. |
+| Large screenshot admission | PASS - fixture | A real 3440×1392 DIB buffer exceeds 16 MiB; the ordinary test records its PNG with zero skips and regenerates a valid same-size DIB. This is not a Snipping Tool UI check. |
+| Registered PNG capture and paste formats | PASS | With the app stopped, the opt-in real clipboard test supplies PNG alongside a malformed DIB, verifies exact captured PNG bytes, writes the stored image and reads valid PNG/CF_DIB back. Privacy exclusions and own-write suppression pass. |
+| Re-copy indicator | PASS | Copied the dedicated Notepad fixture twice. Actual popup shows accent bar and `copied 2×`; `screenshots/v3-copy-indicator.png`. |
+| Current-clipboard marker | PASS - native test | Real clipboard own-write test asserts the current clip ID; the visual dot was not separately certified. |
+| Real ShareX lookup | PASS | Read-only integration check resolves Known Documents to OneDrive/Documents and matches the real Clipdeck ShareX capture at Unix 1793777997 to `ShareX/Screenshots/2026-11/claude_zzQJyTesj6.png`. Newest ShareX entry also resolves. |
+| Screenshot Show in folder | PASS for opening folder | Clicked Show in folder for the real ShareX screenshot. Independent foreground read shows `2026-11 - File Explorer`. Actual menu screenshot: `screenshots/v3-show-folder-menu.png`. Explorer selection screenshot/selection inspection was interrupted. |
+| Win+Shift+S full screen and region | FAIL - verification incomplete | Computer Use was stopped by physical Escape before these UI captures. |
+| Image paste into Word or Chrome | FAIL - verification incomplete | The Word launch helper failed with `accessibility window-opened handler did not become ready`; later GUI verification was stopped. Native clipboard format tests do not certify either target. |
+| Snipping/custom-path/Pictures fallback and multi-file selection | FAIL - desktop verification incomplete | Source/path logic is unit-tested; these final GUI cases were not completed. |
+
+No GUI actions were attempted after the physical Escape interruption.
+The final release remains running from
+`C:/Users/nooro/orca/workspaces/clipdeck/m2-ux/target/release/clipdeck.exe`
+for owner testing.
