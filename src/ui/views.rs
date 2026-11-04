@@ -69,7 +69,7 @@ impl Popup {
         });
         self.open_menu(menu, position, Anchor::TopLeft, window, cx);
     }
-    fn bar(
+    pub(super) fn bar(
         &self,
         title: SharedString,
         detail: Option<String>,
@@ -144,6 +144,7 @@ impl Popup {
         let column = div().flex_1().min_h_0().flex().flex_col();
         match &self.view {
             View::List => div().into_any_element(),
+            View::Settings(_) => self.settings_view(cx),
             View::Text { id, text } => {
                 let id = *id;
                 let clip = self.clips.iter().find(|c| c.id == id).cloned();

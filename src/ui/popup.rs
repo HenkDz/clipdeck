@@ -17,6 +17,15 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
+/// Re-registers the global shortcut; errors when another app owns it.
+pub type SetHotkey = Rc<dyn Fn(&str) -> Result<(), String>>;
+
+/// App-wide state the popup reads or changes.
+pub struct Hooks {
+    pub paused: Arc<AtomicBool>,
+    pub set_hotkey: SetHotkey,
+}
+
 pub(super) const FILTERS: [&str; 6] = ["All", "Links", "Images", "Text", "Files", "Pinned"];
 
 /// A file clip shows under Files, and under Images too when every file is an image.
@@ -56,6 +65,7 @@ pub(super) enum View {
         id: i64,
         rows: Vec<(&'static str, String)>,
     },
+    Settings(super::settings::Settings),
 }
 
 pub(super) struct Gallery {
@@ -107,6 +117,7 @@ pub struct Popup {
     pub(super) status: Option<Status>,
     pub(super) menu: Option<Menu>,
     pub(super) paused: Arc<AtomicBool>,
+    pub(super) set_hotkey: SetHotkey,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -115,7 +126,7 @@ impl Popup {
         store: Rc<RefCell<Store>>,
         clipboard: Clipboard,
         target: Target,
-        paused: Arc<AtomicBool>,
+        hooks: Hooks,
         config: Config,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -153,7 +164,8 @@ impl Popup {
             config,
             status: None,
             menu: None,
-            paused,
+            paused: hooks.paused,
+            set_hotkey: hooks.set_hotkey,
             _subscriptions: vec![change, activation, theme],
         };
         this.reload(cx);
@@ -344,6 +356,7 @@ impl Popup {
                     _ => false,
                 }
             }
+            View::Settings(_) => self.settings_key(event, window, cx),
             View::Details { .. } => {
                 if key == "escape" {
                     self.back(window, cx);
@@ -400,6 +413,7 @@ impl Popup {
                 self.set_filter(key.parse::<usize>().unwrap() - 1, cx)
             }
             "d" if mods.control && !mods.alt && !mods.shift => self.toggle_density(cx),
+            "," if mods.control => self.open_settings(window, cx),
             "up" => self.selected = self.selected.saturating_sub(1),
             "down" => self.selected = (self.selected + 1).min(self.clips.len().saturating_sub(1)),
             "enter" => self.selected_command(Command::Paste(mods.shift), window, cx),
@@ -435,6 +449,7 @@ impl Popup {
                 ("Ctrl+P", "pin"),
                 ("Del", "delete"),
                 ("Ctrl+D", "density"),
+                ("Ctrl+,", "settings"),
             ],
             View::Text { .. } | View::Image { .. } => {
                 &[("Enter", "paste"), ("Ctrl+C", "copy"), ("Esc", "back")]
@@ -452,6 +467,8 @@ impl Popup {
             ],
             View::Edit { .. } => &[("Ctrl+S", "save"), ("Esc", "cancel")],
             View::Details { .. } => &[("Esc", "back")],
+            View::Settings(s) if s.recording => &[("Esc", "cancel recording")],
+            View::Settings(_) => &[("Esc", "back")],
         }
     }
     pub(super) fn copy_selected_to_clipboard(

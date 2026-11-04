@@ -92,27 +92,3 @@ pub fn open_external(path: &str) -> Result<(), String> {
         Ok(())
     }
 }
-
-pub fn open_settings(path: &std::path::Path) -> Result<(), String> {
-    use windows::{
-        Win32::UI::{Shell::*, WindowsAndMessaging::SW_SHOWNORMAL},
-        core::{HSTRING, PCWSTR, w},
-    };
-    let file = HSTRING::from(path.to_string_lossy().as_ref());
-    let mut request = SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_FLAG_NO_UI,
-        lpVerb: w!("open"),
-        lpFile: PCWSTR(file.as_ptr()),
-        nShow: SW_SHOWNORMAL.0,
-        ..Default::default()
-    };
-    if unsafe { ShellExecuteExW(&mut request) }.is_ok() {
-        return Ok(());
-    }
-    std::process::Command::new("notepad.exe")
-        .arg(path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
-}

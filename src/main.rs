@@ -56,9 +56,28 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let paused = Arc::new(AtomicBool::new(false));
     let clipboard = platform::start_watcher(sender.clone(), paused.clone())?;
     let manager = GlobalHotKeyManager::new()?;
-    manager.register(config.hotkey.parse()?)?;
+    let current: global_hotkey::hotkey::HotKey = config.hotkey.parse()?;
+    manager.register(current)?;
+    // Settings changes the shortcut live: swap registrations, keeping the old one on failure.
+    let hotkeys = Rc::new(RefCell::new((manager, current)));
+    let set_hotkey: ui::SetHotkey = Rc::new(move |text: &str| {
+        let new: global_hotkey::hotkey::HotKey = text.parse().map_err(|e| format!("{e}"))?;
+        let mut keys = hotkeys.borrow_mut();
+        let (manager, old) = &mut *keys;
+        if new == *old {
+            return Ok(());
+        }
+        manager.unregister(*old).map_err(|e| e.to_string())?;
+        if let Err(error) = manager.register(new) {
+            let _ = manager.register(*old);
+            return Err(error.to_string());
+        }
+        *old = new;
+        Ok(())
+    });
     let hotkey_down = AtomicBool::new(false);
     let source_sender = sender.clone();
+    let settings_sender = sender.clone();
     GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
         if opens_popup(event.state, &hotkey_down) {
             let _ = sender.send_blocking(platform::Event::Open(platform::Target::capture()));
@@ -71,7 +90,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ui::sync_theme(None, cx);
             let store = Rc::new(RefCell::new(store));
             cx.spawn(async move |cx| {
-                let (_manager, _instance) = (manager, instance);
+                let (_set_hotkey, _instance) = (set_hotkey.clone(), instance);
                 let mut popup: Option<WindowHandle<gpui_component::Root>> = None;
                 let mut view: Option<Entity<ui::Popup>> = None;
                 while let Ok(event) = receiver.recv().await {
@@ -141,12 +160,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                         platform::Event::Quit => cx.quit(),
+                        // Tray Settings: open the popup for keyboard use, then show Settings.
                         platform::Event::Settings => {
-                            if let Ok(dir) = config::directory()
-                                && let Err(error) =
-                                    platform::open_settings(&dir.join("config.toml"))
-                            {
-                                eprintln!("Settings: {error}");
+                            let _ = settings_sender
+                                .send_blocking(platform::Event::Open(platform::last_app()));
+                            let _ = settings_sender.send_blocking(platform::Event::ShowSettings);
+                        }
+                        platform::Event::ShowSettings => {
+                            if let (Some(handle), Some(view)) = (popup, view.as_ref()) {
+                                let _ = handle.update(cx, |_, window, cx| {
+                                    view.update(cx, |view, cx| view.open_settings(window, cx))
+                                });
                             }
                         }
                         platform::Event::Error(error) => eprintln!("{error}"),
@@ -184,7 +208,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                             store.clone(),
                                             clipboard,
                                             target,
-                                            paused.clone(),
+                                            ui::Hooks {
+                                                paused: paused.clone(),
+                                                set_hotkey: set_hotkey.clone(),
+                                            },
                                             config.clone(),
                                             window,
                                             cx,

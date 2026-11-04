@@ -342,6 +342,27 @@ mod cases {
         assert!(migrate(&mut s.db).is_err());
     }
     #[test]
+    fn settings_change_limit_and_size_cap_live() {
+        let mut s = store(10);
+        for t in ["a", "b", "c", "d"] {
+            s.record(&clip(t), false, false).unwrap();
+        }
+        let pinned = s.list("").unwrap()[3].id;
+        s.pin(pinned).unwrap();
+        assert_eq!(s.unpinned().unwrap(), 3);
+        s.set_limit(1).unwrap();
+        let left: Vec<String> = s.list("").unwrap().into_iter().map(|c| c.text).collect();
+        assert_eq!(left, ["a", "d"]);
+        s.set_max_clip_mb(1);
+        s.record(&clip(&"x".repeat(1024 * 1024 + 1)), false, false)
+            .unwrap();
+        assert_eq!(s.skipped, 1);
+        s.set_max_clip_mb(2);
+        s.record(&clip(&"x".repeat(1024 * 1024 + 1)), false, false)
+            .unwrap();
+        assert_eq!(s.skipped, 1);
+    }
+    #[test]
     fn retention_keeps_pinned_and_promotes() {
         let mut s = store(2);
         s.record(&clip("pin"), false, false).unwrap();

@@ -23,7 +23,7 @@ pub use clipboard::{current_id, set_current};
 pub use focus::{Target, configure_popup, hide_popup};
 pub use foreground::last_app;
 pub use instance::Instance;
-pub use tray::{open_external, open_settings};
+pub use tray::open_external;
 
 pub enum Event {
     PasteSent {
@@ -43,5 +43,6 @@ pub enum Event {
     Pause,
     Quit,
     Settings,
+    ShowSettings,
     Error(String),
 }

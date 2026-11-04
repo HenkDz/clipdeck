@@ -275,6 +275,21 @@ impl Store {
             .execute("UPDATE clips SET pinned=NOT pinned WHERE id=?1", [id])?;
         self.retain()
     }
+    /// Applies a new history size; unpinned clips beyond it are removed now.
+    pub fn set_limit(&mut self, limit: usize) -> Result<()> {
+        self.limit = limit;
+        self.retain()
+    }
+    pub fn set_max_clip_mb(&mut self, max_clip_mb: usize) {
+        self.max_clip_bytes = max_clip_mb.saturating_mul(1024 * 1024);
+    }
+    pub fn unpinned(&self) -> Result<usize> {
+        self.db
+            .query_row("SELECT COUNT(*) FROM clips WHERE pinned=0", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .map(|n| n as usize)
+    }
     fn retain(&mut self) -> Result<()> {
         self.db.execute("DELETE FROM clips WHERE pinned=0 AND id NOT IN(SELECT id FROM clips WHERE pinned=0 ORDER BY rank DESC LIMIT ?1)",[self.limit as i64])?;
         Ok(())

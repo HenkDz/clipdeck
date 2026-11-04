@@ -1,5 +1,38 @@
 # Clipdeck milestone 2
 
+## Settings window (2026-11-04)
+
+Settings is now a view in the popup, opened from the header menu
+(Settings), Ctrl+, in the list, or the tray's Settings item, which used to
+open config.toml in an editor and now opens the popup on Settings.
+Every change applies immediately and is written to config.toml in place;
+nothing needs a restart and nobody needs to edit the file.
+
+- **Open Clipdeck** shortcut: click the field and press a chord (Ctrl, Alt
+  or Win plus a key; Esc cancels). The global hotkey is re-registered live;
+  if another app owns the chord, the old one stays and an error explains it.
+- **List density**: Comfortable / Compact segmented control.
+- **Keep open on top**: switch.
+- **Clips to keep** (100 to 100,000), **Largest clip** (1 to 128 MB) and
+  **Paste delay** (0 to 1,000 ms) use − / + steppers over sensible presets.
+  Lowering the history below the number of unpinned clips stored shows
+  "Keeping N removes the M oldest unpinned clips" with Cancel / Remove;
+  nothing is deleted until Remove.
+- Pause stays in the tray, where its checkmark lives.
+
+Tests: preset stepping and snapping, chord → shortcut conversion and
+validation, live history-limit and size-cap changes in the store.
+`cargo fmt`, Clippy with warnings denied and `cargo test` (**48 passed,
+2 ignored**) pass.
+
+| Desktop item | Result | How checked |
+| --- | --- | --- |
+| Change shortcut | PASS | Recorded Ctrl+Alt+B: it opened the popup, Ctrl+Shift+V no longer did, config.toml said `Ctrl+Alt+B`. Recorded Ctrl+Shift+V back. |
+| Density, keep open, largest clip, clips to keep | PASS | Each control changed config.toml (`compact`, `keep_open = true`, `32`, `500`) and back again. |
+| History shrink confirmation | PASS | With 1,000 unpinned clips (`--debug-seed` fixture), − showed the prompt and left the history at 1,000; Cancel kept it; Remove left exactly 500. |
+| Fits the default 480×520 popup | PASS | `after-settings-dark.png`, `-light.png`, `-recording-dark.png`, `-confirm-dark.png`. |
+| Tray Settings item | Not desktop-checked | The tray menu was not driven; it sends Open then ShowSettings through the same paths as the hotkey. |
+
 ## ShareX copies failing while Clipdeck runs (2026-11-04)
 
 Owner report: annotated ShareX screenshots reached neither Clipdeck nor

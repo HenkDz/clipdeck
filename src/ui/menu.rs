@@ -311,6 +311,7 @@ pub(super) fn header(
             })
     };
     let keep_view = view.clone();
+    let settings_view = view.clone();
     menu.min_w(px(232.))
         .item(PopupMenuItem::label("List density"))
         .item(density("Comfortable", !compact))
@@ -325,16 +326,12 @@ pub(super) fn header(
         )
         .separator()
         .item(entry(
-            "Open settings file",
+            "Settings",
             IconName::Settings2,
-            None,
+            Some("Ctrl+,"),
             Tone::Normal,
-            |_, _| {
-                if let Ok(dir) = crate::config::directory()
-                    && let Err(error) = crate::platform::open_settings(&dir.join("config.toml"))
-                {
-                    eprintln!("Settings: {error}");
-                }
+            move |window, cx| {
+                let _ = settings_view.update(cx, |this, cx| this.open_settings(window, cx));
             },
         ))
 }
