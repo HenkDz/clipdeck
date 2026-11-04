@@ -31,9 +31,15 @@ impl Target {
     pub(super) fn restore(self) -> bool {
         unsafe {
             let hwnd = HWND(self.0 as *mut _);
-            if !IsWindow(Some(hwnd)).as_bool() { return false; }
-            if GetForegroundWindow() == hwnd { return true; }
-            if SetForegroundWindow(hwnd).as_bool() { return GetForegroundWindow() == hwnd; }
+            if !IsWindow(Some(hwnd)).as_bool() {
+                return false;
+            }
+            if GetForegroundWindow() == hwnd {
+                return true;
+            }
+            if SetForegroundWindow(hwnd).as_bool() {
+                return GetForegroundWindow() == hwnd;
+            }
             let current = GetCurrentThreadId();
             let foreground = GetWindowThreadProcessId(GetForegroundWindow(), None);
             if foreground != current && AttachThreadInput(current, foreground, true).as_bool() {

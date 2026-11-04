@@ -39,10 +39,7 @@ impl Popup {
         let result: Result<(), String> = (|| {
             match cmd {
                 Command::Preview => {
-                    self.preview = Some(platform::preview::Preview {
-                        text: "Loading preview…".into(),
-                        ..Default::default()
-                    });
+                    self.preview = Some("Opening preview…".into());
                     self.preview_id = Some(id);
                     let task = cx.background_spawn(async move { platform::preview::load(id) });
                     cx.spawn(async move |this, cx| {
@@ -50,13 +47,8 @@ impl Popup {
                         let _ = this.update(cx, |this, cx| {
                             if this.preview_id == Some(id) {
                                 match result {
-                                    Ok(preview) => this.preview = Some(preview),
-                                    Err(error) => {
-                                        this.preview = Some(platform::preview::Preview {
-                                            text: error,
-                                            ..Default::default()
-                                        })
-                                    }
+                                    Ok(preview) => this.preview = preview,
+                                    Err(error) => this.preview = Some(error),
                                 }
                                 cx.notify();
                             }

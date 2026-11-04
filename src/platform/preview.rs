@@ -4,13 +4,6 @@ use windows::{
     core::HSTRING,
 };
 
-#[derive(Default)]
-pub struct Preview {
-    pub text: String,
-    pub png: Vec<u8>,
-    pub file: Option<String>,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum FileType {
     Image,
@@ -107,7 +100,7 @@ unsafe fn bitmap_png(bitmap: HBITMAP) -> Result<Vec<u8>, String> {
     }
 }
 
-pub fn load(id: i64) -> Result<Preview, String> {
+pub fn load(id: i64) -> Result<Option<String>, String> {
     let path = crate::config::directory()
         .map_err(|e| e.to_string())?
         .join("history.db");
@@ -121,66 +114,26 @@ pub fn load(id: i64) -> Result<Preview, String> {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .map_err(|e| e.to_string())?;
-    let mut preview = Preview::default();
     match kind.as_str() {
         "image" => {
-            let reader = image::ImageReader::new(Cursor::new(&payload))
-                .with_guessed_format()
-                .map_err(|e| e.to_string())?;
-            let (w, h) = reader.into_dimensions().map_err(|e| e.to_string())?;
-            preview.text = format!("{w} × {h} · {} bytes", payload.len());
-            preview.png = payload;
+            let dir = std::env::temp_dir()
+                .join("Clipdeck-preview")
+                .join(std::process::id().to_string());
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("clip-{id}.png"));
+            std::fs::write(&path, payload).map_err(|e| e.to_string())?;
+            super::open_external(&path.to_string_lossy())?;
+            Ok(None)
         }
         "files" => {
             let file = text.lines().next().ok_or("Empty file list")?;
-            let size = std::fs::metadata(file).map_err(|e| e.to_string())?.len();
-            preview.text = format!(
-                "{file}\n{size} bytes · {:?}\n{}",
-                file_type(file),
-                if text.lines().count() > 1 {
-                    "Showing first file"
-                } else {
-                    ""
-                }
-            );
-            preview.png = thumbnail(file, 1600).unwrap_or_default();
-            if file_type(file) == FileType::Video
-                && let Some(duration) = duration(file)
-            {
-                preview.text.push_str(&format!(
-                    "\nDuration: {}:{:02}",
-                    duration / 60,
-                    duration % 60
-                ));
+            if !Path::new(file).exists() {
+                return Err("This file is no longer available".into());
             }
-            if preview.png.is_empty() {
-                preview.text.push_str("\nNo Shell thumbnail available");
-            }
-            preview.file = Some(file.to_owned());
+            super::open_external(file)?;
+            Ok(None)
         }
-        _ => preview.text = text,
-    }
-    Ok(preview)
-}
-
-fn duration(path: &str) -> Option<u64> {
-    unsafe {
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().ok()?;
-        let result = (|| {
-            let item: IShellItem2 = SHCreateItemFromParsingName(&HSTRING::from(path), None).ok()?;
-            let mut key = PROPERTYKEY::default();
-            PropertiesSystem::PSGetPropertyKeyFromName(
-                windows::core::w!("System.Media.Duration"),
-                &mut key,
-            )
-            .ok()?;
-            item.GetUInt64(&key)
-                .ok()
-                .filter(|v| *v > 0)
-                .map(|v| v / 10_000_000)
-        })();
-        CoUninitialize();
-        result
+        _ => Ok(Some(text)),
     }
 }
 

@@ -15,6 +15,10 @@ pub(super) fn hwnd(window: &gpui::Window) -> Option<HWND> {
 }
 
 unsafe extern "system" fn proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    // GPUI's frameless resize inset otherwise leaves transparent strips around the client.
+    if msg == WM_NCCALCSIZE {
+        return LRESULT(0);
+    }
     if msg == WM_MOUSEACTIVATE && MOUSE.load(Ordering::SeqCst) {
         return LRESULT(MA_NOACTIVATE as isize);
     }

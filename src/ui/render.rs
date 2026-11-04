@@ -3,6 +3,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
     ActiveTheme,
+    button::{Button, ButtonVariants},
     input::{Input, Textarea},
 };
 use std::sync::atomic::Ordering;
@@ -28,35 +29,11 @@ impl Render for Popup {
                     div()
                         .id("preview-text")
                         .overflow_y_scroll()
-                        .max_h(px(300.))
+                        .flex_1()
+                        .min_h_0()
                         .text_sm()
-                        .child(preview.text.clone()),
+                        .child(preview.clone()),
                 )
-                .children((!preview.png.is_empty()).then(|| {
-                    img(std::sync::Arc::new(Image::from_bytes(
-                        ImageFormat::Png,
-                        preview.png.clone(),
-                    )))
-                    .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .object_fit(ObjectFit::Contain)
-                }))
-                .children(preview.file.clone().map(|file| {
-                    div()
-                        .id("open-preview")
-                        .p_2()
-                        .cursor_pointer()
-                        .child("▶ Open in default app")
-                        .on_click(move |_, _, _| {
-                            let file = file.clone();
-                            std::thread::spawn(move || {
-                                if let Err(e) = crate::platform::open_external(&file) {
-                                    eprintln!("Open preview: {e}");
-                                }
-                            });
-                        })
-                }))
                 .child(
                     div()
                         .id("close-preview")
@@ -141,23 +118,25 @@ impl Render for Popup {
                     .child(
                         div()
                             .flex_1()
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, _, window, cx| {
+                            .capture_any_mouse_down(cx.listener(
+                                |this, event: &MouseDownEvent, window, cx| {
+                                    if event.button != MouseButton::Left {
+                                        return;
+                                    }
                                     this.mode.search();
                                     crate::platform::mouse_mode(window, false, this.target);
                                     window.activate_window();
                                     this.input.update(cx, |s, cx| s.focus(window, cx));
-                                }),
-                            )
+                                },
+                            ))
                             .child(Input::new(&self.input)),
                     )
                     .child(
-                        div()
-                            .id("close")
-                            .p_2()
-                            .cursor_pointer()
-                            .child("×")
+                        Button::new("close")
+                            .ghost()
+                            .compact()
+                            .label("×")
+                            .accessibility_label("Close popup")
                             .on_click(
                                 cx.listener(|_, _, window, _| crate::platform::hide_popup(window)),
                             ),

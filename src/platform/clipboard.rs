@@ -110,7 +110,12 @@ fn read(owner: HWND) -> Result<Option<Event>> {
             let sender = SENDER.with(|s| s.borrow().clone());
             // Shell extensions may block; never hold the clipboard or its message loop.
             thread::spawn(move || {
-                if clip.kind == "files" {
+                if clip.kind == "files"
+                    && !matches!(
+                        super::preview::file_type(clip.text.lines().next().unwrap_or("")),
+                        super::preview::FileType::Other
+                    )
+                {
                     clip.thumbnail =
                         super::preview::thumbnail(clip.text.lines().next().unwrap_or(""), 96)
                             .unwrap_or_default();

@@ -16,7 +16,7 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 pub struct Popup {
-    pub(super) preview: Option<platform::preview::Preview>,
+    pub(super) preview: Option<String>,
     pub(super) preview_id: Option<i64>,
     pub(super) mode: super::mode::Mode,
     pub(super) store: Rc<RefCell<Store>>,
@@ -119,6 +119,7 @@ impl Popup {
         if !mouse {
             window.activate_window();
         }
+        platform::configure_popup(window);
     }
     pub fn reload(&mut self, cx: &mut Context<Self>) {
         let result = self.store.borrow().list(&self.input.read(cx).value());

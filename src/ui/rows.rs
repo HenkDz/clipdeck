@@ -15,7 +15,7 @@ pub(super) fn icon(name: &str) -> Icon {
         "files" => IconName::Folder,
         "pin" => IconName::Pin,
         "delete" => IconName::Trash,
-        "plain" => IconName::ClipboardPaste,
+        "plain" | "paste" => IconName::ClipboardPaste,
         _ => IconName::FileText,
     };
     Icon::new(name).size_4()
