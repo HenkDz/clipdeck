@@ -307,7 +307,10 @@ impl Popup {
         let ctrl = mods.control && !mods.alt;
         let handled = match &mut self.view {
             View::List => {
-                if !self.input.read(cx).focus_handle(cx).is_focused(window) {
+                // A header drag ends outside GPUI, leaving focus on the root.
+                if !self.input.read(cx).focus_handle(cx).is_focused(window)
+                    && !self.focus.is_focused(window)
+                {
                     return;
                 }
                 self.list_key(key, mods, window, cx)

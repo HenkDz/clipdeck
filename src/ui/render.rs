@@ -298,6 +298,15 @@ impl Render for Popup {
             .text_color(p.text)
             .text_size(super::theme::TITLE)
             .capture_key_down(cx.listener(Self::key))
+            // Clicks focus the root; keep typing and arrow keys going to the search field.
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    if matches!(this.view, View::List) && this.menu.is_none() {
+                        this.input.update(cx, |s, cx| s.focus(window, cx));
+                    }
+                }),
+            )
             .capture_action(
                 cx.listener(|this, _: &gpui_component::input::Copy, window, cx| {
                     this.copy_selected_to_clipboard(window, cx);

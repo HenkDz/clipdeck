@@ -38,7 +38,14 @@ impl Target {
                 return true;
             }
             if SetForegroundWindow(hwnd).as_bool() {
-                return GetForegroundWindow() == hwnd;
+                // From a still-visible (kept open) popup the switch lands a moment later.
+                for _ in 0..30 {
+                    if GetForegroundWindow() == hwnd {
+                        return true;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+                return false;
             }
             let current = GetCurrentThreadId();
             let foreground = GetWindowThreadProcessId(GetForegroundWindow(), None);
