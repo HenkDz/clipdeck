@@ -7,7 +7,7 @@ use super::{
 };
 use crate::config::{Config, Density};
 use gpui::{prelude::FluentBuilder, *};
-use gpui_component::switch::Switch;
+use gpui_component::{Disableable, switch::Switch};
 use gpui_kit_assets::IconName;
 
 const HISTORY: [usize; 10] = [
@@ -18,6 +18,8 @@ const DELAY_MS: [usize; 11] = [0, 20, 40, 60, 80, 120, 160, 250, 400, 600, 1000]
 
 #[derive(Default)]
 pub(super) struct Settings {
+    pub scroll: ScrollHandle,
+    pub startup: Option<bool>,
     /// Waiting for the next key chord to become the shortcut.
     pub recording: bool,
     /// A smaller history size waiting for confirmation, since it deletes clips.
@@ -119,7 +121,22 @@ fn row(
 impl Popup {
     pub fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.menu = None;
-        self.view = View::Settings(Settings::default());
+        let startup = crate::platform::startup::enabled();
+        self.status = startup
+            .as_ref()
+            .err()
+            .map(|error| Status::Error(format!("Could not read Windows startup setting: {error}")));
+        let startup = startup.ok();
+        self.view.open(
+            &mut self.history,
+            View::Settings(Settings {
+                startup,
+                ..Default::default()
+            }),
+        );
+        if let View::Settings(state) = &mut self.view {
+            state.startup = startup;
+        }
         self.focus.focus(window, cx);
         cx.notify();
     }
@@ -271,6 +288,26 @@ impl Popup {
             return div().into_any_element();
         };
         let (recording, confirm) = (state.recording, state.confirm);
+        let scroll = state.scroll.clone();
+        let startup = Switch::new("start-with-windows")
+            .checked(state.startup.unwrap_or(false))
+            .disabled(state.startup.is_none())
+            .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                match crate::platform::startup::set(*checked) {
+                    Ok(()) => {
+                        if let View::Settings(state) = &mut this.view {
+                            state.startup = Some(*checked);
+                        }
+                        this.status = None;
+                    }
+                    Err(error) => {
+                        this.status = Some(Status::Error(format!(
+                            "Could not change Windows startup setting: {error}"
+                        )))
+                    }
+                }
+                cx.notify();
+            }));
         let config = self.config.clone();
 
         let recorder = div()
@@ -431,6 +468,7 @@ impl Popup {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
+            .track_scroll(&scroll)
             .px(S4)
             .pb(S3)
             .flex()
@@ -448,6 +486,12 @@ impl Popup {
             ))
             .child(div().h(px(1.)).bg(p.hairline).mt(S1))
             .child(section("Window", p))
+            .child(row(
+                "Start with Windows",
+                "Runs in the background when you sign in",
+                startup,
+                p,
+            ))
             .child(row("List density", "Ctrl+D switches it too", density, p))
             .child(row(
                 "Keep open on top",

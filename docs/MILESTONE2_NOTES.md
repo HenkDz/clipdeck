@@ -818,3 +818,24 @@ The v0.1.7 release build repeats the same passing checks after the version bump.
 Windows executable metadata reports 0.1.7. Packaging verifies the portable ZIP and
 SHA-256 checksums and signs the update manifest with the existing trusted key.
 Database schema remains v5; the updater and its trust configuration are unchanged.
+
+## Settings and Back navigation — v0.1.8 (2026-11-06)
+
+Settings now reads and controls the per-user `Clipdeck.lnk` Startup shortcut, including
+the existing installation's shortcut. Native Shell link creation is atomic, uses the
+current executable and its working folder, and supports Unicode paths. Errors leave
+the toggle unchanged and show an explanation. No startup preference is duplicated
+in config.toml, and the OS shortcut survives application updates at the same path.
+
+Back and Escape share screen history. Updates returns to Settings (with its scroll
+position), previews or the list as appropriate; reopening Settings/Updates does not
+create navigation loops. Preview editing returns to the prior preview with saved
+text, background previews continue loading across screens, and list scroll position
+is retained. Release notes remain visible after a verified download.
+
+Validation: fmt, Clippy with warnings denied, **69 passed, 2 ignored**, and optimized
+release build. New tests cover nested/repeated navigation, retained Settings state
+and scroll, gallery Back behavior, and actual Shell shortcut round trips, replacement,
+Unicode paths, failed writes and repeated disabling in an isolated temporary folder.
+Desktop automation still cannot target Clipdeck's popup; visual click-through and
+actual login/reboot startup remain unverified. Database schema remains v5.

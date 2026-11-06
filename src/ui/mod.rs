@@ -2,6 +2,7 @@ mod bulk;
 mod commands;
 mod menu;
 mod mode;
+mod navigation;
 mod popup;
 mod render;
 mod rows;

@@ -104,6 +104,7 @@ pub(super) struct Menu {
 
 pub struct Popup {
     pub(super) view: View,
+    pub(super) history: Vec<View>,
     pub(super) mode: super::mode::Mode,
     pub(super) store: Rc<RefCell<Store>>,
     pub(super) input: Entity<InputState>,
@@ -156,6 +157,7 @@ impl Popup {
         });
         let mut this = Self {
             view: View::List,
+            history: vec![],
             mode: super::mode::Mode::Keyboard,
             store,
             input,
@@ -208,6 +210,7 @@ impl Popup {
             self.status = None;
         }
         self.view = View::List;
+        self.history.clear();
         self.menu = None;
         self.input.update(cx, |s, cx| {
             s.set_value("", window, cx);
@@ -238,6 +241,7 @@ impl Popup {
         }
     }
     pub fn reload(&mut self, cx: &mut Context<Self>) {
+        let scroll = (!matches!(self.view, View::List)).then(|| self.list.logical_scroll_top());
         let result = self.store.borrow().list(&self.input.read(cx).value());
         match result {
             Ok(clips) => {
@@ -263,6 +267,9 @@ impl Popup {
             self.items.push(Some(ix));
         }
         self.list.reset(self.items.len());
+        if let Some(scroll) = scroll {
+            self.list.scroll_to(scroll);
+        }
         cx.notify();
     }
     pub(super) fn set_filter(&mut self, filter: usize, cx: &mut Context<Self>) {
@@ -309,20 +316,20 @@ impl Popup {
     pub(super) fn compact(&self) -> bool {
         self.config.density == Density::Compact
     }
-    /// Leaves a sub-view for the list (or the gallery grid for an opened file).
+    /// Returns to the previous screen, keeping its state and focus.
     pub(super) fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let View::Gallery(g) = &mut self.view
-            && g.open
-            && !g.single
-        {
-            g.open = false;
+        let scroll = self.list.logical_scroll_top();
+        self.view.back(&mut self.history);
+        if let View::Gallery(g) = &self.view {
             self.gallery_scroll.scroll_to_item(g.selected);
-            cx.notify();
-            return;
         }
-        self.view = View::List;
-        self.input.update(cx, |s, cx| s.focus(window, cx));
+        match &self.view {
+            View::List => self.input.update(cx, |s, cx| s.focus(window, cx)),
+            View::Edit { editor, .. } => editor.update(cx, |s, cx| s.focus(window, cx)),
+            _ => self.focus.focus(window, cx),
+        }
         self.reload(cx);
+        self.list.scroll_to(scroll);
     }
     pub(super) fn key(
         &mut self,

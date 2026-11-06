@@ -12,6 +12,8 @@ Read it to understand behavior; never copy its code — Clipdeck is not GPL.
 
 - Opens at the mouse cursor on the global hotkey (default `Ctrl+Shift+V`, configurable later).
   Frameless, always on top, no taskbar entry. Closes on `Esc` or focus loss.
+- Settings includes Start with Windows, controlling the per-user Startup shortcut.
+  Back and Escape return to the previous screen; Settings keeps its scroll position.
 - Focus lands in the search box. Typing filters the list immediately (substring, case-insensitive).
 - Filter chips under the search: All, Links, Images, Text, Pinned.
 - Sections: Pinned (top), then Today / Earlier.
@@ -67,7 +69,7 @@ The visual reference for the popup and menu is `docs/mockup.html`.
 2. **Real app** — SQLite history, images and file lists, tray icon, pinning, filter chips,
    the mockup's popup and right-click menu (with paste-as transforms), a config file for
    hotkey and history size.
-3. **Productivity** — Ditto import, collections, sensitive-text masking, settings UI, autostart,
+3. **Productivity** — Ditto import, collections, sensitive-text masking,
    plus the owner's picks:
    - **Paste queue:** copy several items, then paste them one after another in order.
    - **Smart actions by type:** links (strip `utm_*` and other tracking parameters, copy as a

@@ -101,23 +101,26 @@ impl Popup {
                     match clip.kind.as_str() {
                         "files" => self.open_gallery(&clip, cx),
                         "image" => {
-                            self.view = View::Image {
-                                id,
-                                image: None,
-                                caption: format!("{} · {}", clip.text, clip.source),
-                            };
+                            self.view.open(
+                                &mut self.history,
+                                View::Image {
+                                    id,
+                                    image: None,
+                                    caption: format!("{} · {}", clip.text, clip.source),
+                                },
+                            );
                             let task = cx.background_spawn(async move {
                                 platform::locations::load_clip(id).map(|c| c.payload)
                             });
                             cx.spawn(async move |this, cx| {
                                 let result = task.await;
                                 let _ = this.update(cx, |this, cx| {
-                                    if let View::Image {
-                                        id: shown,
+                                    let view = this.views_mut().find(|view| matches!(view, View::Image { id: shown, .. } if *shown == id));
+                                    if let Some(View::Image {
                                         image,
                                         caption,
-                                    } = &mut this.view
-                                        && *shown == id
+                                        ..
+                                    }) = view
                                     {
                                         match result {
                                             Ok(bytes) => {
@@ -139,15 +142,16 @@ impl Popup {
                             .detach();
                         }
                         _ => {
-                            self.view = View::Text { id, text: None };
+                            self.view
+                                .open(&mut self.history, View::Text { id, text: None });
                             let task = cx.background_spawn(async move {
                                 platform::locations::load_clip(id).map(|c| c.text)
                             });
                             cx.spawn(async move |this, cx| {
                                 let result = task.await;
                                 let _ = this.update(cx, |this, cx| {
-                                    if let View::Text { id: shown, text } = &mut this.view
-                                        && *shown == id
+                                    let view = this.views_mut().find(|view| matches!(view, View::Text { id: shown, text: None } if *shown == id));
+                                    if let Some(View::Text { text, .. }) = view
                                     {
                                         match result {
                                             Ok(full) => *text = Some(full),
@@ -201,17 +205,21 @@ impl Popup {
                         s.set_value(clip.text, window, cx);
                         s.focus(window, cx);
                     });
-                    self.view = View::Edit { id, editor: input };
+                    self.view
+                        .open(&mut self.history, View::Edit { id, editor: input });
                 }
                 Command::Details => {
                     self.store
                         .borrow()
                         .hydrate(&mut clip)
                         .map_err(|e| e.to_string())?;
-                    self.view = View::Details {
-                        id,
-                        rows: details(&clip),
-                    };
+                    self.view.open(
+                        &mut self.history,
+                        View::Details {
+                            id,
+                            rows: details(&clip),
+                        },
+                    );
                     self.focus.focus(window, cx);
                 }
                 Command::Open => {
@@ -357,13 +365,16 @@ impl Popup {
             .take(400)
             .map(|f| (f.path.clone(), f.kind))
             .collect();
-        self.view = View::Gallery(Gallery {
-            id,
-            files,
-            selected: 0,
-            open: single,
-            single,
-        });
+        self.view.open(
+            &mut self.history,
+            View::Gallery(Gallery {
+                id,
+                files,
+                selected: 0,
+                open: single,
+                single,
+            }),
+        );
         self.gallery_scroll = ScrollHandle::new();
         if single {
             self.load_gallery_detail(0, cx);
@@ -392,12 +403,12 @@ impl Popup {
                     .await;
                 let more = this
                     .update(cx, |this, cx| {
-                        let View::Gallery(g) = &mut this.view else {
+                        let Some(View::Gallery(g)) = this
+                            .views_mut()
+                            .find(|view| matches!(view, View::Gallery(g) if g.id == id))
+                        else {
                             return false;
                         };
-                        if g.id != id {
-                            return false;
-                        }
                         for (k, (missing, thumb)) in results.into_iter().enumerate() {
                             let file = &mut g.files[start + k];
                             file.missing = Some(missing);
@@ -525,8 +536,9 @@ impl Popup {
         cx.spawn(async move |this, cx| {
             let (caption, large) = task.await;
             let _ = this.update(cx, |this, cx| {
-                if let View::Gallery(g) = &mut this.view
-                    && g.id == id
+                if let Some(View::Gallery(g)) = this
+                    .views_mut()
+                    .find(|view| matches!(view, View::Gallery(g) if g.id == id))
                     && let Some(file) = g.files.get_mut(ix)
                 {
                     file.caption = caption;
@@ -542,7 +554,12 @@ impl Popup {
             let text = editor.read(cx).value().to_string();
             let result = self.store.borrow_mut().edit(*id, &text);
             match result {
-                Ok(()) => self.back(window, cx),
+                Ok(()) => {
+                    if let Some(View::Text { text: previous, .. }) = self.history.last_mut() {
+                        *previous = Some(text);
+                    }
+                    self.back(window, cx);
+                }
                 Err(error) => self.status = Some(Status::Error(format!("Edit not saved: {error}"))),
             }
         }

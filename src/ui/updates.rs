@@ -10,7 +10,8 @@ use gpui_component::switch::Switch;
 impl Popup {
     pub fn open_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.menu = None;
-        self.view = super::popup::View::Updates;
+        self.view
+            .open(&mut self.history, super::popup::View::Updates);
         self.focus.focus(window, cx);
         cx.notify();
     }
@@ -52,6 +53,7 @@ impl Popup {
         };
         let notes = match &state {
             State::Available(release) => Some(release.manifest.notes.clone()),
+            State::Ready(stage) => Some(stage.release.manifest.notes.clone()),
             _ => None,
         };
         let offered = state.offered();

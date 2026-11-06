@@ -16,6 +16,7 @@ mod instance;
 pub mod locations;
 mod placement;
 mod source;
+pub mod startup;
 mod time;
 mod tray;
 pub use time::{is_today, when};

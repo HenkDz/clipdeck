@@ -79,7 +79,9 @@ text, pin, delete, copy without pasting, and clip details.
 
 No config files to edit. Change the shortcut by pressing the new keys, choose the density, keep
 the window on top, and set how many clips to keep, the largest clip to record and the paste delay.
-Changes apply immediately.
+Changes apply immediately. **Start with Windows** launches Clipdeck in the background
+when you sign in, using your Windows Startup shortcut. Updates returns to the screen
+you opened it from, preserving your Settings scroll position.
 
 <p align="center">
   <img src="docs/readme/settings-light.png" alt="Settings, light" width="420">
@@ -119,7 +121,7 @@ a selected row for the bulk actions. Search, filter changes and reopening start 
 
 ### Download
 
-Get `clipdeck-0.1.7-windows-x64.zip` from the
+Get `clipdeck-0.1.8-windows-x64.zip` from the
 [latest release](https://github.com/HenkDz/clipdeck/releases/latest), unzip it anywhere and run
 `clipdeck.exe`. There is no installer; your history and settings live in `%APPDATA%\Clipdeck`.
 
@@ -141,7 +143,7 @@ Choose **Check for updates** from the tray menu or Settings. Clipdeck shows the 
 version and release notes, downloads and verifies it, then offers **Update and restart**.
 Daily background checks are optional and off by default. The app folder must be writable.
 
-v0.1.1 and earlier need one manual upgrade to v0.1.7 to gain the updater. Your history
+v0.1.1 and earlier need one manual upgrade to v0.1.8 to gain the updater. Your history
 and settings remain in `%APPDATA%\Clipdeck`. Updates use a signed manifest and SHA-256
 checksums. Before replacement, Clipdeck closes and makes a consistent history backup.
 If the new version fails before startup completes, it restores the previous executable
@@ -215,7 +217,6 @@ screen and drag out. Next (milestone 3):
 - Import history from Ditto
 - Collections
 - Masking and auto-expiry for password-like text
-- Start with Windows
 - A paste queue: copy several items, paste them in order
 - Smart actions by type: clean tracking parameters from links, format JSON, convert colors
 - A list of apps whose copies are never recorded
