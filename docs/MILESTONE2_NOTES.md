@@ -797,3 +797,24 @@ APPDATA/LOCALAPPDATA. Desktop checks used an activated popup; the tray modifier
 activation change reuses the existing tested mode/activation path but was not
 independently exercised through an inactive tray window by automation. Pinned
 clips stay above the new batch, and ordinary filters still apply.
+
+## Link opening controls (2026-11-06)
+
+Link rows now show an external-link button labelled "Open in default app" in both
+densities. The same action appears directly after Preview in the right-click menu.
+It reuses `Command::Open`, which hydrates the full saved URL before calling the
+existing Windows Shell opener. Opening no longer lives under Paste as; links get
+the regular text transforms there. Clipboard and paste counters are unaffected.
+
+Validation: Rust 1.99.1 fmt, clippy `--all-targets -- -D warnings`, tests (**65
+passed, 2 ignored**), debug/release builds and `git diff --check` passed. No new
+dependency or schema change. Built locally and restarted with the normal profile.
+
+Desktop automation could not discover the running fixture popup as a targetable
+window, even after reopening it. Inline/menu click-through, compact layout and the
+663-character test URL's Windows handoff remain unverified.
+
+The v0.1.7 release build repeats the same passing checks after the version bump.
+Windows executable metadata reports 0.1.7. Packaging verifies the portable ZIP and
+SHA-256 checksums and signs the update manifest with the existing trusted key.
+Database schema remains v5; the updater and its trust configuration are unchanged.

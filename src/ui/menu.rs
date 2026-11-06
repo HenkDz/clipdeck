@@ -172,6 +172,9 @@ pub(super) fn build(
                 Command::OpenExternal,
             ));
     }
+    if clip.kind == "link" {
+        menu = menu.item(item("Open in default app", view.clone(), id, Command::Open));
+    }
     menu = menu
         .separator()
         .item(item("Paste", view.clone(), id, Command::Paste(false)))
@@ -240,7 +243,6 @@ fn paste_as(
     sub = sub.min_w(px(220.)).max_w(px(300.));
     match clip.kind.as_str() {
         "image" => sub.item(item("Save as file…", view, id, Command::Save)),
-        "link" => sub.item(item("Open in browser", view, id, Command::Open)),
         "files" => {
             for transform in FILE_TRANSFORMS {
                 sub = sub.item(item(

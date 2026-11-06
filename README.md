@@ -26,7 +26,8 @@ with no telemetry. Update checks use GitHub; clipboard contents stay on your PC.
   (titled with the captured app when ShareX saved it) and multi-file copies
   from Explorer, shown as one row with a thumbnail mosaic.
 - **Actions on the row.** Hover or select a clip for paste, plain text, pin and delete.
-  A green paste icon with ×N shows what you have already used.
+  Links also have an **Open in default app** button. A green paste icon with ×N shows
+  what you have already used.
 - **Drag clips out.** Drag any row into another app: text, images (as a file and as image data)
   or files. Drag a single file out of a multi-file clip.
 - **Your window, your way.** Comfortable or compact rows, resize from any edge, or keep the
@@ -118,7 +119,7 @@ a selected row for the bulk actions. Search, filter changes and reopening start 
 
 ### Download
 
-Get `clipdeck-0.1.6-windows-x64.zip` from the
+Get `clipdeck-0.1.7-windows-x64.zip` from the
 [latest release](https://github.com/HenkDz/clipdeck/releases/latest), unzip it anywhere and run
 `clipdeck.exe`. There is no installer; your history and settings live in `%APPDATA%\Clipdeck`.
 
@@ -140,7 +141,7 @@ Choose **Check for updates** from the tray menu or Settings. Clipdeck shows the 
 version and release notes, downloads and verifies it, then offers **Update and restart**.
 Daily background checks are optional and off by default. The app folder must be writable.
 
-v0.1.1 and earlier need one manual upgrade to v0.1.6 to gain the updater. Your history
+v0.1.1 and earlier need one manual upgrade to v0.1.7 to gain the updater. Your history
 and settings remain in `%APPDATA%\Clipdeck`. Updates use a signed manifest and SHA-256
 checksums. Before replacement, Clipdeck closes and makes a consistent history backup.
 If the new version fails before startup completes, it restores the previous executable

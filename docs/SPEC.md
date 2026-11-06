@@ -18,6 +18,7 @@ Read it to understand behavior; never copy its code — Clipdeck is not GPL.
 - Each row: type icon (link, email, text, image thumbnail, file list, sensitive), one-line preview,
   meta line (source app · relative time). Images show a thumbnail plus dimensions.
 - Selected row shows inline actions: paste as plain text, pin, delete.
+  Links also show Open in default app, available directly in the right-click menu.
 - Footer shows the shortcuts: `Enter` paste · `Shift+Enter` plain text · `Ctrl+P` pin · `Del` delete.
 - `1`–`9` paste the nth visible clip when the search box is empty.
 - Ctrl-click toggles clips; Shift-click selects a range. Modifier selection activates
@@ -36,7 +37,7 @@ Read it to understand behavior; never copy its code — Clipdeck is not GPL.
 4. More (submenu: Properties, Export, and everything advanced)
 
 "Paste as…" for text: UPPERCASE, lowercase, Trim spaces, One line. Images: Save as file.
-Links: Open.
+Links use the text transforms; Open in default app is a separate action.
 
 ### Sensitive clips
 

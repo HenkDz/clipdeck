@@ -265,6 +265,17 @@ impl Popup {
             Command::Paste(false),
             clip.pastes,
         )];
+        if clip.kind == "link" {
+            buttons.insert(
+                0,
+                (
+                    IconName::ExternalLink,
+                    "Open in default app",
+                    Command::Open,
+                    0,
+                ),
+            );
+        }
         if clip.is_text() {
             buttons.push((
                 IconName::ClipboardType,
