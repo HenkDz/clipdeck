@@ -23,8 +23,8 @@ Read it to understand behavior; never copy its code — Clipdeck is not GPL.
   Links also show Open in default app, available directly in the right-click menu.
 - Footer shows the shortcuts: `Enter` paste · `Shift+Enter` plain text · `Ctrl+P` pin · `Del` delete.
 - `1`–`9` paste the nth visible clip when the search box is empty.
-- Ctrl-click toggles clips; Shift-click selects a range. Modifier selection activates
-  a tray-opened popup for keyboard commands. Ordinary tray row clicks remain inactive.
+- Ctrl-click toggles clips; Shift-click selects a range. Selecting a row activates
+  a tray-opened popup for keyboard commands, including a normal single click.
 - Ctrl+C copies the selection, adds the blue copied border to its members and updates
   their copy counts. Several clips create one reusable row at the top of recent history
   (below pinned clips); repeating the selection updates that row. Images/files form one

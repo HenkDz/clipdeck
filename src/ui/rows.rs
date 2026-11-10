@@ -403,11 +403,9 @@ impl Popup {
             .child(actions)
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 let mods = event.modifiers();
-                if mods.control || mods.shift {
-                    this.mode.search();
-                    crate::platform::mouse_mode(window, false, this.target);
-                    this.activate(window, cx);
-                }
+                this.mode.search();
+                crate::platform::mouse_mode(window, false, this.target);
+                this.activate(window, cx);
                 this.selection.click(
                     &this.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
                     id,

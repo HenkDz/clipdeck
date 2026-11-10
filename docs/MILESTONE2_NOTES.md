@@ -839,3 +839,18 @@ and scroll, gallery Back behavior, and actual Shell shortcut round trips, replac
 Unicode paths, failed writes and repeated disabling in an isolated temporary folder.
 Desktop automation still cannot target Clipdeck's popup; visual click-through and
 actual login/reboot startup remain unverified. Database schema remains v5.
+
+## Single-selection keyboard focus — v0.1.9 (2026-11-10)
+
+A tray-opened popup was deliberately inactive. Ctrl/Shift selection switched it to
+keyboard mode, but normal single-click selection did not; Ctrl+C could therefore go
+to the previously focused application. All row selection clicks now use the existing
+activation path. The remembered paste target, drag handling and inline button actions
+remain intact. No clipboard or storage change: successful single-copy completion
+already shows `Copied to clipboard`, promotes the existing row and updates its copy
+count/current marker without changing paste counters or inserting a duplicate.
+
+Validation: fmt, Clippy with warnings denied, **69 passed, 2 ignored** on v0.1.9,
+optimized build and signed packaging. Single-copy persistence and unchanged paste counters are covered by
+the existing store regression test. The desktop tools still cannot expose Clipdeck
+as a targetable window, so actual tray-click/Ctrl+C routing remains unverified.
