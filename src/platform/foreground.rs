@@ -21,6 +21,7 @@ fn remember(hwnd: HWND) {
     if hwnd.is_invalid() {
         return;
     }
+    super::frame::foreground_changed();
     let target = Target::from_hwnd(hwnd);
     if target.is_app() {
         return;
@@ -30,7 +31,6 @@ fn remember(hwnd: HWND) {
     let class = String::from_utf16_lossy(&class[..len]);
     if !SHELL_CLASSES.contains(&class.as_str()) {
         LAST.store(hwnd.0 as usize, Ordering::SeqCst);
-        super::frame::foreground_changed(hwnd);
     }
 }
 

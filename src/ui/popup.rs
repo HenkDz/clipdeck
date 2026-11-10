@@ -147,11 +147,6 @@ impl Popup {
                 this.reload(cx);
             }
         });
-        let activation = cx.observe_window_activation(window, |this, window, _| {
-            if !this.mode.is_mouse() && !platform::keep() && !window.is_window_active() {
-                platform::hide_popup(window);
-            }
-        });
         let theme = cx.observe_window_appearance(window, |_, window, cx| {
             super::sync_theme(Some(window), cx);
         });
@@ -178,7 +173,7 @@ impl Popup {
             updates: hooks.updates,
             update_action: hooks.update_action,
             press: None,
-            _subscriptions: vec![change, activation, theme],
+            _subscriptions: vec![change, theme],
         };
         this.reload(cx);
         this

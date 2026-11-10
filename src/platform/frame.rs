@@ -141,6 +141,22 @@ unsafe extern "system" fn proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRE
         // GPUI's frameless resize inset otherwise leaves transparent strips around the client.
         WM_NCCALCSIZE => LRESULT(0),
         WM_MOUSEACTIVATE if MOUSE.load(Ordering::SeqCst) => LRESULT(MA_NOACTIVATE as isize),
+        WM_FOREGROUND_CHANGED => {
+            let foreground = unsafe { GetForegroundWindow() };
+            if !foreground.is_invalid()
+                && dismiss_on_foreground(
+                    keep(),
+                    MOUSE.load(Ordering::SeqCst),
+                    super::Target::from_hwnd(foreground).is_app(),
+                    foreground.0 as usize == TARGET.load(Ordering::SeqCst),
+                )
+            {
+                unsafe {
+                    let _ = ShowWindow(h, SW_HIDE);
+                }
+            }
+            LRESULT(0)
+        }
         WM_NCHITTEST => {
             let mut rect = RECT::default();
             let dpi = unsafe { GetDpiForWindow(h) }.max(96) as i32;
@@ -214,6 +230,7 @@ fn subclass(h: HWND) {
 }
 
 const WM_PLACE: u32 = WM_APP + 0x31;
+const WM_FOREGROUND_CHANGED: u32 = WM_APP + 0x33;
 static PENDING: Mutex<Option<RECT>> = Mutex::new(None);
 /// Moves the popup from its own message loop. Called during a GPUI update, a direct
 /// SetWindowPos would deliver WM_SIZE while the window is borrowed and GPUI would
@@ -249,15 +266,18 @@ pub fn mouse_mode(window: &gpui::Window, mouse: bool, target: super::Target) {
     }
 }
 
-pub(super) fn foreground_changed(h: HWND) {
-    if MOUSE.load(Ordering::SeqCst)
-        && !KEEP.load(Ordering::SeqCst)
-        && h.0 as usize != TARGET.load(Ordering::SeqCst)
-    {
+pub(super) fn foreground_changed() {
+    let h = HWND(POPUP.load(Ordering::SeqCst) as *mut _);
+    if !h.is_invalid() {
         unsafe {
-            let _ = ShowWindow(HWND(POPUP.load(Ordering::SeqCst) as *mut _), SW_HIDE);
+            // Recheck on the popup thread after any pending row activation has finished.
+            let _ = PostMessageW(Some(h), WM_FOREGROUND_CHANGED, WPARAM(0), LPARAM(0));
         }
     }
+}
+
+fn dismiss_on_foreground(keep: bool, mouse: bool, own_window: bool, paste_target: bool) -> bool {
+    !keep && !own_window && !(mouse && paste_target)
 }
 
 pub fn visible(window: &gpui::Window) -> bool {
@@ -286,6 +306,19 @@ pub fn native_border(window: &gpui::Window, color: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn outside_focus_dismisses_after_selection_but_keeps_tray_target_and_dialogs() {
+        assert!(!dismiss_on_foreground(false, true, false, true));
+        assert!(dismiss_on_foreground(false, false, false, true));
+        for mouse in [false, true] {
+            // Other apps, taskbar and desktop are all outside the popup.
+            assert!(dismiss_on_foreground(false, mouse, false, false));
+            for target in [false, true] {
+                assert!(!dismiss_on_foreground(true, mouse, false, target));
+                assert!(!dismiss_on_foreground(false, mouse, true, target));
+            }
+        }
+    }
     #[test]
     fn resize_edges_and_corners() {
         let r = RECT {

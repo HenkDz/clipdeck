@@ -854,3 +854,24 @@ Validation: fmt, Clippy with warnings denied, **69 passed, 2 ignored** on v0.1.9
 optimized build and signed packaging. Single-copy persistence and unchanged paste counters are covered by
 the existing store regression test. The desktop tools still cannot expose Clipdeck
 as a targetable window, so actual tray-click/Ctrl+C routing remains unverified.
+
+## Outside-focus dismissal — v0.1.10 (2026-11-10)
+
+The native foreground watcher previously dismissed only inactive tray popups, and
+filtered out taskbar/desktop events together with invalid paste targets. Once a row
+activated the popup, dismissal depended on GPUI's activation observer. All foreground
+events now queue a native check on the popup thread, which checks the actual current
+foreground window after pending row activation completes. Outside apps, desktop and
+taskbar dismiss an activated popup when Keep open on top is off. Same-process windows
+(including dialogs), Keep open on top, and an inactive tray popup's original target
+remain exempt. Paste-target tracking still excludes shell windows. The redundant
+GPUI activation observer has been removed.
+
+A regression matrix covers returning to the paste target after selecting a clip,
+other outside windows in both modes, owned dialogs and Keep open on top. The native
+check re-reads current foreground state so queued older events do not dismiss a newly
+activated popup. No clipboard, history, schema, dependency or startup-setting change.
+
+Validation on v0.1.10: fmt, Clippy with warnings denied, **70 passed, 2 ignored**,
+optimized build and signed packaging. Desktop outside-click interaction remains
+unverified through automation because the popup is not exposed as a targetable window.
