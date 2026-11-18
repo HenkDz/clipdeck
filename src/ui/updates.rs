@@ -8,13 +8,6 @@ use gpui::*;
 use gpui_component::switch::Switch;
 
 impl Popup {
-    pub fn open_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.menu = None;
-        self.view
-            .open(&mut self.history, super::popup::View::Updates);
-        self.focus.focus(window, cx);
-        cx.notify();
-    }
     pub(super) fn updates_view(&self, cx: &mut Context<Self>) -> Div {
         let p = palette(cx);
         let state = self.updates.borrow().clone();
@@ -77,6 +70,7 @@ impl Popup {
                 cx.notify();
             }));
         div()
+            .flex_none()
             .flex()
             .flex_col()
             .gap(S2)

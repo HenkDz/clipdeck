@@ -141,6 +141,20 @@ impl Popup {
         cx.notify();
     }
 
+    pub fn open_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_settings(window, cx);
+        if let View::Settings(state) = &self.view {
+            let scroll = state.scroll.clone();
+            window.on_next_frame(move |window, _| {
+                // Wait until the Settings viewport has been laid out.
+                window.on_next_frame(move |window, _| {
+                    scroll.scroll_to_top_of_item(1);
+                    window.refresh();
+                });
+            });
+        }
+    }
+
     fn save(&mut self, keys: &[(&str, String)]) {
         if let Err(error) = Config::save(keys) {
             self.status = Some(Status::Error(format!("Settings not saved: {error}")));
@@ -463,14 +477,8 @@ impl Popup {
                 )
         });
 
-        let body = div()
-            .id("settings")
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll()
-            .track_scroll(&scroll)
-            .px(S4)
-            .pb(S3)
+        let preferences = div()
+            .flex_none()
             .flex()
             .flex_col()
             .child(section("Shortcut", p))
@@ -520,7 +528,18 @@ impl Popup {
                 delay,
                 p,
             ))
-            .child(div().h(px(1.)).bg(p.hairline).mt(S1))
+            .child(div().h(px(1.)).bg(p.hairline).mt(S1));
+        let body = div()
+            .id("settings")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .track_scroll(&scroll)
+            .px(S4)
+            .pb(S3)
+            .flex()
+            .flex_col()
+            .child(preferences)
             .child(self.updates_view(cx));
         div()
             .flex_1()

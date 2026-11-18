@@ -80,8 +80,8 @@ text, pin, delete, copy without pasting, and clip details.
 No config files to edit. Change the shortcut by pressing the new keys, choose the density, keep
 the window on top, and set how many clips to keep, the largest clip to record and the paste delay.
 Changes apply immediately. **Start with Windows** launches Clipdeck in the background
-when you sign in, using your Windows Startup shortcut. Updates returns to the screen
-you opened it from, preserving your Settings scroll position.
+when you sign in, using your Windows Startup shortcut. The Updates section stays in Settings
+while you check, download, and install an update.
 
 <p align="center">
   <img src="docs/readme/settings-light.png" alt="Settings, light" width="420">
@@ -122,7 +122,7 @@ a selected row for the bulk actions. Search, filter changes and reopening start 
 
 ### Download
 
-Get `clipdeck-0.1.11-windows-x64.zip` from the
+Get `clipdeck-0.1.12-windows-x64.zip` from the
 [latest release](https://github.com/HenkDz/clipdeck/releases/latest), unzip it anywhere and run
 `clipdeck.exe`. There is no installer; your history and settings live in `%APPDATA%\Clipdeck`.
 
@@ -135,16 +135,17 @@ Get `clipdeck-0.1.11-windows-x64.zip` from the
 Clipdeck runs in the background with a tray icon:
 
 - **Left-click** the tray icon to open the popup (click again to close it).
-- **Right-click** for Open, Pause recording, Settings and Quit.
+- **Right-click** for Open, Pause recording, Settings, Check for updates and Quit.
 - Starting it a second time just opens the running copy.
 
 ### Updates
 
-Choose **Check for updates** from the tray menu or Settings. Clipdeck shows the new
-version and release notes, downloads and verifies it, then offers **Update and restart**.
+Choose **Check for updates** in Settings. The tray menu also opens this section and starts
+a check. Clipdeck shows the new version and release notes, downloads and verifies it, then
+offers **Update and restart**. After restarting, Clipdeck opens to the Updates section in Settings.
 Daily background checks are optional and off by default. The app folder must be writable.
 
-v0.1.1 and earlier need one manual upgrade to v0.1.11 to gain the updater. Your history
+v0.1.1 and earlier need one manual upgrade to gain the updater. Your history
 and settings remain in `%APPDATA%\Clipdeck`. Updates use a signed manifest and SHA-256
 checksums. Before replacement, Clipdeck closes and makes a consistent history backup.
 If the new version fails before startup completes, it restores the previous executable

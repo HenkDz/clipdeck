@@ -68,7 +68,6 @@ pub(super) enum View {
         rows: Vec<(&'static str, String)>,
     },
     Settings(super::settings::Settings),
-    Updates,
 }
 
 pub(super) struct Gallery {
@@ -378,7 +377,7 @@ impl Popup {
                 }
             }
             View::Settings(_) => self.settings_key(event, window, cx),
-            View::Details { .. } | View::Updates => {
+            View::Details { .. } => {
                 if key == "escape" {
                     self.back(window, cx);
                 }
@@ -500,7 +499,7 @@ impl Popup {
                 ("Esc", "back"),
             ],
             View::Edit { .. } => &[("Ctrl+S", "save"), ("Esc", "cancel")],
-            View::Details { .. } | View::Updates => &[("Esc", "back")],
+            View::Details { .. } => &[("Esc", "back")],
             View::Settings(s) if s.recording => &[("Esc", "cancel recording")],
             View::Settings(_) => &[("Esc", "back")],
         }

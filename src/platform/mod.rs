@@ -33,6 +33,7 @@ pub use tray::open_external;
 pub enum Event {
     Update(crate::update::Action),
     UpdateState(crate::update::State),
+    TrayCheckUpdates,
     PasteSent {
         id: i64,
         hash: Vec<u8>,

@@ -369,19 +369,23 @@ impl Render for Popup {
                     )
                 }),
             )
-            .children(self.updates.borrow().offered().then(|| {
-                status_line(
-                    IconName::Info,
-                    "Update available · view update".into(),
-                    p.secondary,
-                    p,
-                )
-                .id("update-available")
-                .role(Role::Button)
-                .aria_label("Open updates")
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, window, cx| this.open_updates(window, cx)))
-            }))
+            .children(
+                (!matches!(self.view, View::Settings(_)) && self.updates.borrow().offered()).then(
+                    || {
+                        status_line(
+                            IconName::Info,
+                            "Update available · view update".into(),
+                            p.secondary,
+                            p,
+                        )
+                        .id("update-available")
+                        .role(Role::Button)
+                        .aria_label("Open updates")
+                        .cursor_pointer()
+                        .on_click(cx.listener(|this, _, window, cx| this.open_updates(window, cx)))
+                    },
+                ),
+            )
             .child(self.footer(window, p))
             .children(self.menu.as_ref().map(|menu| {
                 deferred(

@@ -125,19 +125,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                     handle.update(cx, |_, window, _| platform::save_bounds(window));
                             }
                             updates.handle(action, &update_sender);
-                            if matches!(action, update::Action::Check(true)) {
-                                let visible = popup.is_some_and(|handle| {
-                                    handle
-                                        .update(cx, |_, window, _| platform::visible(window))
-                                        .unwrap_or(false)
-                                });
-                                if !visible {
-                                    let _ = update_sender
-                                        .send_blocking(platform::Event::Open(platform::last_app()));
-                                }
-                                let _ = update_sender.send_blocking(platform::Event::ShowUpdates);
-                            }
                             cx.refresh_windows();
+                        }
+                        platform::Event::TrayCheckUpdates => {
+                            updates.handle(update::Action::Check(true), &update_sender);
+                            let _ = update_sender
+                                .send_blocking(platform::Event::Open(platform::last_app()));
+                            let _ = update_sender.send_blocking(platform::Event::ShowUpdates);
                         }
                         platform::Event::UpdateState(state) => {
                             if matches!(state, update::State::Restarting) {

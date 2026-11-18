@@ -48,7 +48,7 @@ pub fn create(
                 Event::Pause
             }
             "settings" => Event::Settings,
-            "updates" => Event::Update(crate::update::Action::Check(true)),
+            "updates" => Event::TrayCheckUpdates,
             "quit" => Event::Quit,
             _ => return,
         };
