@@ -406,19 +406,25 @@ pub fn start_watcher(
         match setup() {
             Ok(hwnd) => {
                 super::foreground::watch();
-                let _tray = match super::tray::create(sender.clone(), paused) {
+                let tray = match super::tray::create(sender.clone(), paused) {
                     Ok(tray) => Some(tray),
                     Err(e) => {
                         let _ = sender.send_blocking(Event::Error(format!("Tray: {e}")));
                         None
                     }
                 };
+                super::outside_click::bind(hwnd);
+                let mut outside_clicks = None;
                 let _ = ready.send(Ok(Clipboard(hwnd.0 as usize)));
                 let mut msg = MSG::default();
                 while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                    if super::outside_click::handle(&msg, tray.as_ref(), &mut outside_clicks) {
+                        continue;
+                    }
                     let _ = TranslateMessage(&msg);
                     DispatchMessageW(&msg);
                 }
+                super::outside_click::bind(HWND::default());
                 let _ = RemoveClipboardFormatListener(hwnd);
                 let _ = DestroyWindow(hwnd);
             }

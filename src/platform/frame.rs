@@ -35,6 +35,7 @@ pub fn set_keep(keep: bool) {
     let hwnd = HWND(POPUP.load(Ordering::SeqCst) as *mut _);
     if !hwnd.is_invalid() {
         unsafe {
+            super::outside_click::watch_visible(IsWindowVisible(hwnd).as_bool());
             let _ = SetWindowPos(
                 hwnd,
                 Some(if keep { HWND_TOPMOST } else { HWND_NOTOPMOST }),
@@ -141,6 +142,18 @@ unsafe extern "system" fn proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRE
         // GPUI's frameless resize inset otherwise leaves transparent strips around the client.
         WM_NCCALCSIZE => LRESULT(0),
         WM_MOUSEACTIVATE if MOUSE.load(Ordering::SeqCst) => LRESULT(MA_NOACTIVATE as isize),
+        WM_SHOWWINDOW => {
+            super::outside_click::watch_visible(wp.0 != 0);
+            original()
+        }
+        WM_DISMISS_OUTSIDE => {
+            if !keep() {
+                unsafe {
+                    let _ = ShowWindow(h, SW_HIDE);
+                }
+            }
+            LRESULT(0)
+        }
         WM_FOREGROUND_CHANGED => {
             let foreground = unsafe { GetForegroundWindow() };
             if !foreground.is_invalid()
@@ -231,6 +244,7 @@ fn subclass(h: HWND) {
 
 const WM_PLACE: u32 = WM_APP + 0x31;
 const WM_FOREGROUND_CHANGED: u32 = WM_APP + 0x33;
+pub(super) const WM_DISMISS_OUTSIDE: u32 = WM_APP + 0x34;
 static PENDING: Mutex<Option<RECT>> = Mutex::new(None);
 /// Moves the popup from its own message loop. Called during a GPUI update, a direct
 /// SetWindowPos would deliver WM_SIZE while the window is borrowed and GPUI would
@@ -276,6 +290,11 @@ pub(super) fn foreground_changed() {
     }
 }
 
+pub(super) fn dismissible_popup() -> Option<HWND> {
+    let h = HWND(POPUP.load(Ordering::SeqCst) as *mut _);
+    (!keep() && !h.is_invalid() && unsafe { IsWindowVisible(h).as_bool() }).then_some(h)
+}
+
 fn dismiss_on_foreground(keep: bool, mouse: bool, own_window: bool, paste_target: bool) -> bool {
     !keep && !own_window && !(mouse && paste_target)
 }
@@ -306,6 +325,81 @@ pub fn native_border(window: &gpui::Window, color: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outside_press_hides_inactive_popup_without_a_foreground_event() {
+        use crate::platform::outside_click;
+        use windows::core::w;
+
+        let popup = unsafe {
+            CreateWindowExW(
+                WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                w!("STATIC"),
+                w!(""),
+                WS_POPUP,
+                -30_000,
+                -30_000,
+                64,
+                64,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        .unwrap();
+        subclass(popup);
+        outside_click::bind(popup);
+        unsafe {
+            let _ = ShowWindow(popup, SW_SHOWNOACTIVATE);
+            assert_ne!(GetForegroundWindow(), popup);
+            assert!(IsWindowVisible(popup).as_bool());
+
+            let mut message = MSG::default();
+            let mut watch = None;
+            assert!(
+                PeekMessageW(&mut message, Some(popup), WM_APP, WM_APP + 0xff, PM_REMOVE).as_bool()
+            );
+            assert!(outside_click::handle(&message, None, &mut watch));
+            assert!(watch.is_some());
+            let outside = POINT {
+                x: i32::MIN,
+                y: i32::MIN,
+            };
+            outside_click::post_press(popup, outside).unwrap();
+            assert!(
+                PeekMessageW(&mut message, Some(popup), WM_APP, WM_APP + 0xff, PM_REMOVE).as_bool()
+            );
+            assert!(outside_click::handle(&message, None, &mut watch));
+            assert!(
+                PeekMessageW(
+                    &mut message,
+                    Some(popup),
+                    WM_DISMISS_OUTSIDE,
+                    WM_DISMISS_OUTSIDE,
+                    PM_REMOVE
+                )
+                .as_bool()
+            );
+            KEEP.store(true, Ordering::SeqCst);
+            DispatchMessageW(&message);
+            assert!(IsWindowVisible(popup).as_bool());
+            KEEP.store(false, Ordering::SeqCst);
+            DispatchMessageW(&message);
+            assert!(!IsWindowVisible(popup).as_bool());
+            assert!(
+                PeekMessageW(&mut message, Some(popup), WM_APP, WM_APP + 0xff, PM_REMOVE).as_bool()
+            );
+            assert!(outside_click::handle(&message, None, &mut watch));
+            assert!(watch.is_none());
+
+            outside_click::bind(HWND::default());
+            DestroyWindow(popup).unwrap();
+            POPUP.store(0, Ordering::SeqCst);
+            PROC.store(0, Ordering::SeqCst);
+        }
+    }
+
     #[test]
     fn outside_focus_dismisses_after_selection_but_keeps_tray_target_and_dialogs() {
         assert!(!dismiss_on_foreground(false, true, false, true));

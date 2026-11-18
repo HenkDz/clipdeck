@@ -14,6 +14,7 @@ mod icon;
 mod image;
 mod instance;
 pub mod locations;
+mod outside_click;
 mod placement;
 mod source;
 pub mod startup;

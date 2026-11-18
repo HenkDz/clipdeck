@@ -26,12 +26,16 @@ fn remember(hwnd: HWND) {
     if target.is_app() {
         return;
     }
+    if !is_shell(hwnd) {
+        LAST.store(hwnd.0 as usize, Ordering::SeqCst);
+    }
+}
+
+pub(super) fn is_shell(hwnd: HWND) -> bool {
     let mut class = [0u16; 64];
     let len = unsafe { GetClassNameW(hwnd, &mut class) } as usize;
     let class = String::from_utf16_lossy(&class[..len]);
-    if !SHELL_CLASSES.contains(&class.as_str()) {
-        LAST.store(hwnd.0 as usize, Ordering::SeqCst);
-    }
+    SHELL_CLASSES.contains(&class.as_str())
 }
 
 unsafe extern "system" fn on_foreground(
